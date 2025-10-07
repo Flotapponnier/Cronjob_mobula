@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -14,7 +15,6 @@ import (
 	"github.com/hashicorp/vault/shamir"
 )
 
-// ANSI color codes
 const (
 	ColorReset  = "\033[0m"
 	ColorBlue   = "\033[34m"
@@ -23,10 +23,10 @@ const (
 	ColorRed    = "\033[31m"
 )
 
-const (
-	keyFile      = "/app/keys/master.key"
-	keyDir       = "/app/keys"
-	resendAPIKey = "re_QE7e3DAF_7bvvi5mLwbZX91NkRQP11Xti"
+var (
+	keyFile  string
+	keyDir   string
+	testFile string
 )
 
 type KeyInfo struct {
@@ -40,8 +40,8 @@ func main() {
 	fmt.Println("🔐 Encryption Key Generator")
 	fmt.Println("===========================")
 
-	// Load configuration from .env file
-	totalShares, threshold, err := loadConfig()
+	loadConfig()
+	totalShares, threshold, err := validateShamirConfig()
 	if err != nil {
 		fmt.Printf("❌ Failed to load configuration: %v\n", err)
 		os.Exit(1)
@@ -49,17 +49,15 @@ func main() {
 
 	fmt.Printf("📋 Configuration: %d total shares, %d required to decrypt\n", totalShares, threshold)
 
-	// Create key directory
 	if err := os.MkdirAll(keyDir, 0700); err != nil {
 		fmt.Printf("❌ Failed to create key directory: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Check if key already exists
 	if _, err := os.Stat(keyFile); err == nil {
 		fmt.Printf("⚠️  Master key already exists at %s\n", keyFile)
 		fmt.Print("Do you want to regenerate it? This will invalidate existing encrypted snapshots! (y/N): ")
-		
+
 		var response string
 		fmt.Scanln(&response)
 		if response != "y" && response != "Y" {
@@ -69,24 +67,22 @@ func main() {
 		fmt.Println("🔄 Regenerating master key...")
 	}
 
-	// Generate new master key
 	key, err := generateMasterKey()
 	if err != nil {
 		fmt.Printf("❌ Failed to generate master key: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Create key shares using Shamir's Secret Sharing
+	cleanupOldTestFile()
+
 	shares, err := createKeyShares(hex.EncodeToString(key), totalShares, threshold)
 	if err != nil {
 		fmt.Printf("❌ Failed to create key shares: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Display key shares instead of sending emails
 	displayKeyShares(shares, threshold)
 
-	// Save key info for the encryption program
 	keyInfo := KeyInfo{
 		MasterKeyHex:   hex.EncodeToString(key),
 		GeneratedAt:    time.Now(),
@@ -106,7 +102,7 @@ func main() {
 
 // generateMasterKey creates a new 256-bit encryption key
 func generateMasterKey() ([]byte, error) {
-	key := make([]byte, 32) // 256-bit key
+	key := make([]byte, 32)
 	if _, err := rand.Read(key); err != nil {
 		return nil, fmt.Errorf("failed to generate random key: %v", err)
 	}
@@ -121,23 +117,20 @@ func generateMasterKey() ([]byte, error) {
 	return key, nil
 }
 
-// createKeyShares splits the master key using Shamir's Secret Sharing
 func createKeyShares(keyHex string, totalShares, requiredShares int) ([]string, error) {
 	fmt.Printf("🔐 Creating %d key shares (threshold: %d)\n", totalShares, requiredShares)
-	
+
 	// Convert hex string to bytes
 	keyBytes, err := hex.DecodeString(keyHex)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode key hex: %v", err)
 	}
-	
-	// Create shares using HashiCorp Vault's Shamir implementation
+
 	shares, err := shamir.Split(keyBytes, totalShares, requiredShares)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Shamir shares: %v", err)
 	}
 
-	// Convert shares to hex strings for easy transmission
 	shareStrings := make([]string, len(shares))
 	for i, share := range shares {
 		shareStrings[i] = hex.EncodeToString(share)
@@ -147,17 +140,47 @@ func createKeyShares(keyHex string, totalShares, requiredShares int) ([]string, 
 	return shareStrings, nil
 }
 
-// loadConfig reads configuration from .env file
-func loadConfig() (int, int, error) {
-	// Default values
-	totalShares := 5
-	threshold := 3
+func loadConfig() {
+	// Read configuration from .env file
+	envVars := readEnvFile()
+	
+	keyDir = getConfigValue(envVars, "KEY_DIR", "/app/keys")
+	keyFilename := getConfigValue(envVars, "KEY_FILENAME", "master.key")
+	testFile = getConfigValue(envVars, "TEST_FILE", "/app/test_hello.encrypted")
+	
+	// Construct full key file path
+	keyFile = filepath.Join(keyDir, keyFilename)
+}
+
+func validateShamirConfig() (int, int, error) {
+	// Read configuration from .env file
+	envVars := readEnvFile()
+	
+	// Get values with defaults (fixed: now reads from .env)
+	totalShares := getConfigInt(envVars, "SHAMIR_TOTAL_SHARES", 3)
+	threshold := getConfigInt(envVars, "SHAMIR_THRESHOLD", 3)
+
+	if threshold > totalShares {
+		return 0, 0, fmt.Errorf("threshold (%d) cannot be greater than total shares (%d)", threshold, totalShares)
+	}
+	if threshold < 2 {
+		return 0, 0, fmt.Errorf("threshold must be at least 2, got %d", threshold)
+	}
+	if totalShares < 2 {
+		return 0, 0, fmt.Errorf("total shares must be at least 2, got %d", totalShares)
+	}
+
+	return totalShares, threshold, nil
+}
+
+// readEnvFile reads the .env file and returns a map of key-value pairs
+func readEnvFile() map[string]string {
+	envVars := make(map[string]string)
 	
 	envFile := "/app/.env"
 	file, err := os.Open(envFile)
 	if err != nil {
-		fmt.Printf("⚠️  No .env file found, using defaults: %d shares, %d threshold\n", totalShares, threshold)
-		return totalShares, threshold, nil
+		return envVars // Return empty map if file doesn't exist
 	}
 	defer file.Close()
 	
@@ -175,34 +198,30 @@ func loadConfig() (int, int, error) {
 		
 		key := strings.TrimSpace(parts[0])
 		value := strings.TrimSpace(parts[1])
-		
-		switch key {
-		case "SHAMIR_TOTAL_SHARES":
-			if val, err := strconv.Atoi(value); err == nil && val > 0 {
-				totalShares = val
-			}
-		case "SHAMIR_THRESHOLD":
-			if val, err := strconv.Atoi(value); err == nil && val > 0 {
-				threshold = val
-			}
-		}
+		envVars[key] = value
 	}
 	
-	// Validate configuration
-	if threshold > totalShares {
-		return 0, 0, fmt.Errorf("threshold (%d) cannot be greater than total shares (%d)", threshold, totalShares)
-	}
-	if threshold < 2 {
-		return 0, 0, fmt.Errorf("threshold must be at least 2, got %d", threshold)
-	}
-	if totalShares < 2 {
-		return 0, 0, fmt.Errorf("total shares must be at least 2, got %d", totalShares)
-	}
-	
-	return totalShares, threshold, nil
+	return envVars
 }
 
-// displayKeyShares displays key shares in the terminal instead of sending emails
+// getConfigValue gets a string value from config with fallback
+func getConfigValue(envVars map[string]string, key, defaultValue string) string {
+	if value, exists := envVars[key]; exists && value != "" {
+		return value
+	}
+	return defaultValue
+}
+
+// getConfigInt gets an integer value from config with fallback
+func getConfigInt(envVars map[string]string, key string, defaultValue int) int {
+	if value, exists := envVars[key]; exists && value != "" {
+		if intVal, err := strconv.Atoi(value); err == nil && intVal > 0 {
+			return intVal
+		}
+	}
+	return defaultValue
+}
+
 func displayKeyShares(shares []string, threshold int) {
 	fmt.Println("🔐 ===== ENCRYPTION KEY SHARES =====")
 	fmt.Printf("Generated %d key shares (%d required to decrypt)\n", len(shares), threshold)
@@ -212,7 +231,7 @@ func displayKeyShares(shares []string, threshold int) {
 	for i, share := range shares {
 		shareNumber := i + 1
 		fmt.Printf("🔑 KEY SHARE #%d:\n", shareNumber)
-		
+
 		// Create a box around the key with blue color
 		fmt.Println("   /" + strings.Repeat("-", len(share)+2) + "\\")
 		fmt.Printf("   | %s%s%s |\n", ColorBlue, share, ColorReset)
@@ -228,11 +247,17 @@ func displayKeyShares(shares []string, threshold int) {
 	fmt.Println("🔐 ===================================")
 }
 
+func cleanupOldTestFile() {
+	if _, err := os.Stat(testFile); err == nil {
+		if err := os.Remove(testFile); err == nil {
+			fmt.Printf("🗑️ Removed old test file (was encrypted with previous key)\n")
+		}
+	}
+}
 
-// saveKeyInfo saves key information for the encryption program
 func saveKeyInfo(keyInfo KeyInfo) error {
 	infoFile := keyDir + "/key_info.json"
-	
+
 	jsonData, err := json.MarshalIndent(keyInfo, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal key info: %v", err)
@@ -245,3 +270,4 @@ func saveKeyInfo(keyInfo KeyInfo) error {
 	fmt.Printf("💾 Key information saved to: %s\n", infoFile)
 	return nil
 }
+

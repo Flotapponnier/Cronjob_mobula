@@ -70,33 +70,11 @@ func runSimpleTest() {
 		fmt.Println()
 	}
 	
-	// Get required number of key shares
-	shares := make([]string, keyInfo.RequiredShares)
-	for i := 0; i < keyInfo.RequiredShares; i++ {
-		fmt.Printf("Enter KEY SHARE #%d: ", i+1)
-		var share string
-		fmt.Scanln(&share)
-		shares[i] = strings.TrimSpace(share)
-	}
-	
-	fmt.Println()
-	fmt.Printf("🔐 Reconstructing master key from %d shares...\n", keyInfo.RequiredShares)
-	
-	// Convert hex shares to bytes and reconstruct
-	shareBytes := make([][]byte, len(shares))
-	for i, share := range shares {
-		bytes, err := hex.DecodeString(share)
-		if err != nil {
-			fmt.Printf("%s❌ Invalid hex in share %d: %v%s\n", ColorRed, i+1, err, ColorReset)
-			return
-		}
-		shareBytes[i] = bytes
-	}
-	
-	masterKey, err := shamir.Combine(shareBytes)
+	// Get key shares and reconstruct master key
+	shares := getKeyShares(keyInfo.RequiredShares)
+	masterKey, err := reconstructMasterKey(shares)
 	if err != nil {
-		fmt.Printf("%s❌ Failed to reconstruct key: %v%s\n", ColorRed, err, ColorReset)
-		return
+		return // Error already printed in reconstructMasterKey
 	}
 	
 	fmt.Printf("%s✅ Master key reconstructed!%s\n", ColorGreen, ColorReset)
@@ -140,33 +118,11 @@ func runInteractiveTest() {
 		return
 	}
 	
-	// Get required number of key shares
-	shares := make([]string, keyInfo.RequiredShares)
-	for i := 0; i < keyInfo.RequiredShares; i++ {
-		fmt.Printf("Enter KEY SHARE #%d: ", i+1)
-		fmt.Scanln(&shares[i])
-		shares[i] = strings.TrimSpace(shares[i])
-	}
-	
-	fmt.Println()
-	fmt.Printf("🔐 Attempting to reconstruct master key from %d shares...\n", keyInfo.RequiredShares)
-	
-	// Convert hex shares to bytes
-	shareBytes := make([][]byte, len(shares))
-	for i, share := range shares {
-		bytes, err := hex.DecodeString(share)
-		if err != nil {
-			fmt.Printf("%s❌ Invalid hex in share %d: %v%s\n", ColorRed, i+1, err, ColorReset)
-			return
-		}
-		shareBytes[i] = bytes
-	}
-	
-	// Reconstruct master key
-	masterKey, err := shamir.Combine(shareBytes)
+	// Get key shares and reconstruct master key
+	shares := getKeyShares(keyInfo.RequiredShares)
+	masterKey, err := reconstructMasterKey(shares)
 	if err != nil {
-		fmt.Printf("%s❌ Failed to reconstruct key: %v%s\n", ColorRed, err, ColorReset)
-		return
+		return // Error already printed in reconstructMasterKey
 	}
 	
 	fmt.Printf("%s✅ Master key reconstructed: %s%s\n", ColorGreen, hex.EncodeToString(masterKey), ColorReset)
@@ -277,6 +233,44 @@ func decryptFile(filename string, key []byte) ([]byte, error) {
 	}
 	
 	return plaintext, nil
+}
+
+// getKeyShares prompts user for key shares input
+func getKeyShares(count int) []string {
+	shares := make([]string, count)
+	for i := 0; i < count; i++ {
+		fmt.Printf("Enter KEY SHARE #%d: ", i+1)
+		var share string
+		fmt.Scanln(&share)
+		shares[i] = strings.TrimSpace(share)
+	}
+	return shares
+}
+
+// reconstructMasterKey converts hex shares to bytes and reconstructs the master key
+func reconstructMasterKey(shares []string) ([]byte, error) {
+	fmt.Println()
+	fmt.Printf("🔐 Reconstructing master key from %d shares...\n", len(shares))
+	
+	// Convert hex shares to bytes
+	shareBytes := make([][]byte, len(shares))
+	for i, share := range shares {
+		bytes, err := hex.DecodeString(share)
+		if err != nil {
+			fmt.Printf("%s❌ Invalid hex in share %d: %v%s\n", ColorRed, i+1, err, ColorReset)
+			return nil, err
+		}
+		shareBytes[i] = bytes
+	}
+	
+	// Reconstruct master key using Shamir's Secret Sharing
+	masterKey, err := shamir.Combine(shareBytes)
+	if err != nil {
+		fmt.Printf("%s❌ Failed to reconstruct key: %v%s\n", ColorRed, err, ColorReset)
+		return nil, err
+	}
+	
+	return masterKey, nil
 }
 
 // loadKeyInfo loads key information from the key info file
