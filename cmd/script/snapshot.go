@@ -77,6 +77,9 @@ func main() {
 	// Check and apply retention policy
 	checkRetentionPolicy()
 	
+	// Upload to Google Cloud Storage if enabled
+	uploadToCloud(encryptedPath, snapshotName)
+	
 	logInfo("Encrypted snapshot %s has been saved: %s", snapshotName, encryptedPath)
 }
 
@@ -258,6 +261,139 @@ func removeEmptyDirs(root string) {
 		
 		return nil
 	})
+}
+
+// uploadToCloud uploads the snapshot to Google Cloud Storage
+func uploadToCloud(localPath, snapshotName string) {
+	config := getCloudConfig()
+	if !config.Enabled {
+		return // Cloud upload disabled
+	}
+	
+	logInfo("☁️ Uploading snapshot to Google Cloud Storage...")
+	
+	// Authenticate with service account (use full path)
+	serviceAccountPath := "/app/keys/" + config.ServiceAccountKeyFile
+	if err := authenticateGCP(serviceAccountPath); err != nil {
+		logError("Failed to authenticate with GCP: %v", err)
+		return
+	}
+	
+	// Get the relative path structure (DD/MM/HH)
+	relativePath := getRelativePathFromSnapshot(localPath)
+	
+	// Build cloud path: prefix/DD/MM/HH/snapshot_name.encrypted
+	cloudPath := buildCloudPath(config.BucketPrefix, relativePath, snapshotName+".encrypted")
+	
+	// Upload file using gsutil
+	cmd := exec.Command("/opt/google-cloud-sdk/bin/gsutil", "cp", localPath, fmt.Sprintf("gs://%s/%s", config.BucketName, cloudPath))
+	
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		logError("Failed to upload to cloud: %v - Output: %s", err, string(output))
+		return
+	}
+	
+	logInfo("✅ Successfully uploaded to cloud: gs://%s/%s", config.BucketName, cloudPath)
+}
+
+// CloudConfig holds Google Cloud Storage configuration
+type CloudConfig struct {
+	Enabled               bool
+	ProjectID             string
+	BucketName            string
+	ServiceAccountKeyFile string
+	BucketPrefix          string
+}
+
+// getCloudConfig reads cloud configuration from .env file
+func getCloudConfig() CloudConfig {
+	config := CloudConfig{
+		Enabled:      false,
+		BucketPrefix: "snapshots", // default prefix
+	}
+	
+	envFile := "/app/.env"
+	file, err := os.Open(envFile)
+	if err != nil {
+		return config
+	}
+	defer file.Close()
+	
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		
+		key := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
+		
+		switch key {
+		case "GCP_ENABLED":
+			config.Enabled = strings.ToLower(value) == "true"
+		case "GCP_PROJECT_ID":
+			config.ProjectID = value
+		case "GCP_BUCKET_NAME":
+			config.BucketName = value
+		case "GCP_SERVICE_ACCOUNT_KEY_FILE":
+			config.ServiceAccountKeyFile = value
+		case "GCP_BUCKET_PREFIX":
+			if value != "" {
+				config.BucketPrefix = value
+			}
+		}
+	}
+	
+	return config
+}
+
+// authenticateGCP authenticates with Google Cloud using service account
+func authenticateGCP(serviceAccountFile string) error {
+	// Check if service account file exists
+	if _, err := os.Stat(serviceAccountFile); os.IsNotExist(err) {
+		return fmt.Errorf("service account file not found: %s", serviceAccountFile)
+	}
+	
+	// Activate service account
+	cmd := exec.Command("/opt/google-cloud-sdk/bin/gcloud", "auth", "activate-service-account", "--key-file", serviceAccountFile)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to authenticate: %v - Output: %s", err, string(output))
+	}
+	
+	return nil
+}
+
+// getRelativePathFromSnapshot extracts the DD/MM/HH path from snapshot path
+func getRelativePathFromSnapshot(snapshotPath string) string {
+	// snapshotPath looks like: /app/snapshots/07/10/14/snapshot_07102025_1424.encrypted
+	// We want to extract: 07/10/14
+	
+	// Remove the base snapshots directory and filename
+	relativePath := strings.TrimPrefix(snapshotPath, snapshotDir+"/")
+	
+	// Split by "/" and take first 3 parts (DD/MM/HH)
+	parts := strings.Split(relativePath, "/")
+	if len(parts) >= 3 {
+		return filepath.Join(parts[0], parts[1], parts[2])
+	}
+	
+	return "unknown"
+}
+
+// buildCloudPath constructs the full cloud storage path
+func buildCloudPath(prefix, relativePath, filename string) string {
+	if prefix == "" {
+		return filepath.Join(relativePath, filename)
+	}
+	return filepath.Join(prefix, relativePath, filename)
 }
 
 

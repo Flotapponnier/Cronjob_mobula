@@ -80,64 +80,6 @@ func getSnapshotStats() {
 	logInfo("📸 Total encrypted snapshots: %d", totalSnapshots)
 }
 
-// cleanupOldSnapshots removes snapshots older than specified days
-func cleanupOldSnapshots(keepDays int) error {
-	if keepDays <= 0 {
-		return nil // No cleanup if keepDays is 0 or negative
-	}
-	
-	cutoffTime := time.Now().AddDate(0, 0, -keepDays)
-	logInfo("🧹 Cleaning up snapshots older than %d days (before %s)", keepDays, cutoffTime.Format("2006-01-02"))
-	
-	removed := 0
-	
-	err := filepath.Walk(baseSnapshotDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return nil
-		}
-		
-		// Only process encrypted snapshot files
-		if !info.IsDir() && filepath.Ext(info.Name()) == ".encrypted" {
-			if info.ModTime().Before(cutoffTime) {
-				if err := os.Remove(path); err != nil {
-					logError("Failed to remove old snapshot %s: %v", path, err)
-				} else {
-					removed++
-					logInfo("🗑️ Removed old snapshot: %s", filepath.Base(path))
-				}
-			}
-		}
-		
-		return nil
-	})
-	
-	if err != nil {
-		return fmt.Errorf("cleanup failed: %v", err)
-	}
-	
-	logInfo("✅ Cleanup complete: removed %d old snapshots", removed)
-	
-	// Clean up empty directories
-	return removeEmptyDirs(baseSnapshotDir)
-}
-
-// removeEmptyDirs removes empty directories recursively
-func removeEmptyDirs(root string) error {
-	return filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-		if err != nil || path == root {
-			return err
-		}
-		
-		if info.IsDir() {
-			// Try to remove if empty
-			if err := os.Remove(path); err == nil {
-				logInfo("🗂️ Removed empty directory: %s", path)
-			}
-		}
-		
-		return nil
-	})
-}
 
 // listSnapshotsByDate lists all snapshots organized by date
 func listSnapshotsByDate() {
