@@ -10,9 +10,23 @@ import (
 
 const (
 	snapshotDir = "/app/snapshots"
+	keyFile     = "/app/keys/master.key"
 )
 
 func main() {
+	// Check if encryption key exists
+	if _, err := os.Stat(keyFile); os.IsNotExist(err) {
+		logError("No encryption key found. Use 'make generate' to create a key and start")
+		return
+	}
+
+	// Load the master key
+	masterKey, err := loadMasterKey()
+	if err != nil {
+		logError("Failed to load master key: %v", err)
+		return
+	}
+
 	timestamp := time.Now().Format("20060102_150405")
 	snapshotName := fmt.Sprintf("disk_snapshot_%s", timestamp)
 	
@@ -22,7 +36,7 @@ func main() {
 		return
 	}
 	
-	logInfo("Starting snapshot %s", snapshotName)
+	logInfo("Starting encrypted snapshot %s", snapshotName)
 	
 	// Create directory for this snapshot
 	snapshotPath := filepath.Join(snapshotDir, snapshotName)
@@ -44,7 +58,19 @@ func main() {
 		return
 	}
 	
-	logInfo("Snapshot %s has been generated in the folder %s", snapshotName, snapshotPath)
+	// Encrypt the snapshot
+	encryptedPath := snapshotPath + ".encrypted"
+	if err := encryptSnapshot(snapshotPath, encryptedPath, masterKey); err != nil {
+		logError("Failed to encrypt snapshot: %v", err)
+		return
+	}
+	
+	// Remove the unencrypted directory
+	if err := os.RemoveAll(snapshotPath); err != nil {
+		logError("Failed to remove unencrypted snapshot: %v", err)
+	}
+	
+	logInfo("Encrypted snapshot %s has been generated: %s", snapshotName, encryptedPath)
 }
 
 func copyFiles(backupPath string) error {

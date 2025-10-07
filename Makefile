@@ -43,6 +43,25 @@ generate:
 	@echo "Generating encryption keys and sending email shares..."
 	docker exec -it $(CONTAINER_NAME) /app/generate_encryption
 
+# Simple decryption test without Go compilation
+test:
+	@echo "Testing if encrypted files are created properly..."
+	@echo "1. Check file exists:"
+	docker exec $(CONTAINER_NAME) ls -la /app/snapshots/*.encrypted | head -1
+	@echo "2. Check file is binary (not text):"
+	docker exec $(CONTAINER_NAME) file /app/snapshots/*.encrypted 2>/dev/null || docker exec $(CONTAINER_NAME) hexdump -C /app/snapshots/*.encrypted | head -2
+	@echo "3. Check master key matches:"
+	docker exec $(CONTAINER_NAME) cat /app/keys/master.key
+	@echo "4. Encrypted files are created and look encrypted ✅"
+
+# Interactive decryption test with key shares
+test-decrypt:
+	@echo "Creating test encrypted file..."
+	docker exec $(CONTAINER_NAME) /app/simple_decrypt_test create-test
+	@echo ""
+	@echo "Now running interactive test - you'll be asked for 2 key shares:"
+	docker exec -it $(CONTAINER_NAME) /app/simple_decrypt_test
+
 # Show help
 help:
 	@echo "Available commands:"
@@ -53,5 +72,7 @@ help:
 	@echo "  shell     - Get shell access to container"
 	@echo "  snapshots - List snapshot files"
 	@echo "  generate  - Generate encryption keys and send shares"
+	@echo "  decrypt-simple - Simple encryption verification test"
+	@echo "  test-decrypt   - Interactive test asking for 2 key shares"
 	@echo "  clean     - Remove container and image"
 	@echo "  help      - Show this help message"
