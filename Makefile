@@ -43,23 +43,26 @@ generate:
 	@echo "Generating encryption keys and sending email shares..."
 	docker exec -it $(CONTAINER_NAME) /app/generate_encryption
 
-# Simple decryption test without Go compilation
+# Combined test: basic checks + interactive decryption test
 test:
-	@echo "Testing if encrypted files are created properly..."
-	@echo "1. Check file exists:"
+	@echo "🧪 Running comprehensive encryption tests..."
+	@echo ""
+	@echo "1. Checking encrypted files exist:"
 	docker exec $(CONTAINER_NAME) ls -la /app/snapshots/*.encrypted | head -1
-	@echo "2. Check file is binary (not text):"
+	@echo ""
+	@echo "2. Verifying files are encrypted (binary data):"
 	docker exec $(CONTAINER_NAME) file /app/snapshots/*.encrypted 2>/dev/null || docker exec $(CONTAINER_NAME) hexdump -C /app/snapshots/*.encrypted | head -2
-	@echo "3. Check master key matches:"
+	@echo ""
+	@echo "3. Showing master key:"
 	docker exec $(CONTAINER_NAME) cat /app/keys/master.key
-	@echo "4. Encrypted files are created and look encrypted ✅"
-
-# Interactive decryption test with key shares
-test-decrypt:
-	@echo "Creating test encrypted file..."
+	@echo ""
+	@echo "✅ Basic encryption tests passed!"
+	@echo ""
+	@echo "4. Creating test file with 'hello world!' for decryption test..."
 	docker exec $(CONTAINER_NAME) /app/simple_decrypt_test create-test
 	@echo ""
-	@echo "Now running interactive test - you'll be asked for 2 key shares:"
+	@echo "5. Now running interactive test - you'll be asked for 2 key shares:"
+	@echo "   If successful, you should see 'hello world!' as output."
 	docker exec -it $(CONTAINER_NAME) /app/simple_decrypt_test
 
 # Show help
@@ -72,7 +75,6 @@ help:
 	@echo "  shell     - Get shell access to container"
 	@echo "  snapshots - List snapshot files"
 	@echo "  generate  - Generate encryption keys and send shares"
-	@echo "  decrypt-simple - Simple encryption verification test"
-	@echo "  test-decrypt   - Interactive test asking for 2 key shares"
+	@echo "  test      - Comprehensive encryption test + interactive decryption"
 	@echo "  clean     - Remove container and image"
 	@echo "  help      - Show this help message"
