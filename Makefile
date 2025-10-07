@@ -59,11 +59,19 @@ test:
 	@echo "✅ Basic encryption tests passed!"
 	@echo ""
 	@echo "4. Creating test file with 'hello world!' for decryption test..."
-	docker exec $(CONTAINER_NAME) /app/simple_decrypt_test create-test
+	docker exec $(CONTAINER_NAME) /app/decrypt create-test
 	@echo ""
 	@echo "5. Now running interactive test - you'll be asked for 2 key shares:"
 	@echo "   If successful, you should see 'hello world!' as output."
-	docker exec -it $(CONTAINER_NAME) /app/simple_decrypt_test
+	docker exec -it $(CONTAINER_NAME) /app/decrypt
+
+# Interactive snapshot decryption with decompression
+decrypt:
+	@echo "🔓 Interactive Snapshot Decryption"
+	@echo "=================================="
+	@echo "This will decrypt a snapshot and optionally decompress it."
+	@echo ""
+	docker exec -it $(CONTAINER_NAME) /app/decrypt
 
 # Show help
 help:
@@ -76,5 +84,6 @@ help:
 	@echo "  snapshots - List snapshot files"
 	@echo "  generate  - Generate encryption keys and send shares"
 	@echo "  test      - Comprehensive encryption test + interactive decryption"
+	@echo "  decrypt   - Interactive snapshot decryption with decompression"
 	@echo "  clean     - Remove container and image"
 	@echo "  help      - Show this help message"

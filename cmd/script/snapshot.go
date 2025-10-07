@@ -27,50 +27,51 @@ func main() {
 		return
 	}
 
-	timestamp := time.Now().Format("20060102_150405")
-	snapshotName := fmt.Sprintf("disk_snapshot_%s", timestamp)
-	
-	// Create snapshot directory if it doesn't exist
-	if err := os.MkdirAll(snapshotDir, 0755); err != nil {
-		logError("Failed to create snapshot directory: %v", err)
+	// Create architectured snapshot path and name
+	snapshotPath, snapshotName, err := createArchitecturedSnapshot()
+	if err != nil {
+		logError("Failed to create snapshot architecture: %v", err)
 		return
 	}
 	
 	logInfo("Starting encrypted snapshot %s", snapshotName)
 	
-	// Create directory for this snapshot
-	snapshotPath := filepath.Join(snapshotDir, snapshotName)
-	if err := os.MkdirAll(snapshotPath, 0755); err != nil {
-		logError("Failed to create snapshot path: %v", err)
+	// Create temporary directory for this snapshot (before encryption)
+	tempSnapshotPath := snapshotPath + "_temp"
+	if err := os.MkdirAll(tempSnapshotPath, 0755); err != nil {
+		logError("Failed to create temp snapshot path: %v", err)
 		return
 	}
 	
 	// Copy important files using rsync
-	backupPath := filepath.Join(snapshotPath, "app_backup")
+	backupPath := filepath.Join(tempSnapshotPath, "app_backup")
 	if err := copyFiles(backupPath); err != nil {
 		logError("Failed to copy files: %v", err)
 		return
 	}
 	
 	// Add metadata
-	if err := createMetadata(snapshotPath); err != nil {
+	if err := createMetadata(tempSnapshotPath); err != nil {
 		logError("Failed to create metadata: %v", err)
 		return
 	}
 	
 	// Encrypt the snapshot
 	encryptedPath := snapshotPath + ".encrypted"
-	if err := encryptSnapshot(snapshotPath, encryptedPath, masterKey); err != nil {
+	if err := encryptSnapshot(tempSnapshotPath, encryptedPath, masterKey); err != nil {
 		logError("Failed to encrypt snapshot: %v", err)
 		return
 	}
 	
-	// Remove the unencrypted directory
-	if err := os.RemoveAll(snapshotPath); err != nil {
-		logError("Failed to remove unencrypted snapshot: %v", err)
+	// Remove the temporary unencrypted directory
+	if err := os.RemoveAll(tempSnapshotPath); err != nil {
+		logError("Failed to remove temp snapshot: %v", err)
 	}
 	
-	logInfo("Encrypted snapshot %s has been generated: %s", snapshotName, encryptedPath)
+	// Show snapshot statistics
+	getSnapshotStats()
+	
+	logInfo("Encrypted snapshot %s has been saved: %s", snapshotName, encryptedPath)
 }
 
 func copyFiles(backupPath string) error {

@@ -7,7 +7,7 @@ WORKDIR /build
 COPY cmd/script/ ./script/
 WORKDIR /build/script
 RUN go mod tidy && go mod download
-RUN go build -o snapshot snapshot.go logger.go crypto.go
+RUN go build -o snapshot snapshot.go logger.go crypto.go save_architectured_snapshot.go
 
 # Build key generation program  
 WORKDIR /build
@@ -23,11 +23,15 @@ WORKDIR /build/test
 RUN ls -la && cat go.mod  # Debug output
 RUN go mod tidy && go mod download
 RUN head -5 decrypt.go  # Show first few lines
-RUN go build -v -o simple_decrypt_test .
+RUN go build -v -o decrypt .
 
 
 # Runtime stage
 FROM debian:bullseye
+
+# Set timezone to Europe/Paris
+ENV TZ=Europe/Paris
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 # Update packages and install dependencies
 RUN apt-get update && apt-get install -y \
@@ -35,6 +39,7 @@ RUN apt-get update && apt-get install -y \
     rsync \
     util-linux \
     ca-certificates \
+    tzdata \
     && rm -rf /var/lib/apt/lists/* \
     && update-ca-certificates
 
@@ -44,7 +49,7 @@ RUN mkdir -p /app/snapshots /app/keys
 # Copy Go binaries from builder stage
 COPY --from=builder /build/script/snapshot /app/snapshot
 COPY --from=builder /build/generate/generate_encryption /app/generate_encryption
-COPY --from=builder /build/test/simple_decrypt_test /app/simple_decrypt_test
+COPY --from=builder /build/test/decrypt /app/decrypt
 
 # Copy source files for runtime compilation
 COPY cmd/script/ /app/cmd/script/
@@ -53,7 +58,7 @@ COPY cmd/script/ /app/cmd/script/
 COPY cronjob/cronjob.sh /app/cronjob.sh
 
 # Make scripts executable
-RUN chmod +x /app/snapshot /app/generate_encryption /app/simple_decrypt_test /app/cronjob.sh
+RUN chmod +x /app/snapshot /app/generate_encryption /app/decrypt /app/cronjob.sh
 
 # Copy cron configuration
 COPY crontab /etc/cron.d/snapshot-cron
