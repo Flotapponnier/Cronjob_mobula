@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -75,13 +77,16 @@ func main() {
 }
 
 func copyFiles(backupPath string) error {
+	// Get source path from config
+	sourcePath := getSourcePath()
+	
 	// Ensure backup directory exists
 	if err := os.MkdirAll(backupPath, 0755); err != nil {
 		return fmt.Errorf("failed to create backup directory: %v", err)
 	}
 	
 	// Use rsync with more robust flags
-	cmd := exec.Command("rsync", "-a", "--exclude=snapshots", "--ignore-errors", "/app/", backupPath+"/")
+	cmd := exec.Command("rsync", "-a", "--exclude=snapshots", "--ignore-errors", sourcePath+"/", backupPath+"/")
 	
 	// Run command and capture output for better error reporting
 	output, err := cmd.CombinedOutput()
@@ -112,6 +117,40 @@ func createMetadata(snapshotPath string) error {
 	}
 	
 	return nil
+}
+
+// getSourcePath reads the source path from .env file
+func getSourcePath() string {
+	defaultPath := "/app"
+	
+	envFile := "/app/.env"
+	file, err := os.Open(envFile)
+	if err != nil {
+		return defaultPath
+	}
+	defer file.Close()
+	
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		
+		key := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
+		
+		if key == "SNAPSHOT_SOURCE_PATH" && value != "" {
+			return value
+		}
+	}
+	
+	return defaultPath
 }
 
 

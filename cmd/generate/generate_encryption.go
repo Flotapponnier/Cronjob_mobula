@@ -1,11 +1,14 @@
 package main
 
 import (
+	"bufio"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/vault/shamir"
@@ -27,6 +30,15 @@ type KeyInfo struct {
 func main() {
 	fmt.Println("🔐 Encryption Key Generator")
 	fmt.Println("===========================")
+
+	// Load configuration from .env file
+	totalShares, threshold, err := loadConfig()
+	if err != nil {
+		fmt.Printf("❌ Failed to load configuration: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("📋 Configuration: %d total shares, %d required to decrypt\n", totalShares, threshold)
 
 	// Create key directory
 	if err := os.MkdirAll(keyDir, 0700); err != nil {
@@ -56,21 +68,21 @@ func main() {
 	}
 
 	// Create key shares using Shamir's Secret Sharing
-	shares, err := createKeyShares(hex.EncodeToString(key), 3, 2) // 3 shares, 2 required
+	shares, err := createKeyShares(hex.EncodeToString(key), totalShares, threshold)
 	if err != nil {
 		fmt.Printf("❌ Failed to create key shares: %v\n", err)
 		os.Exit(1)
 	}
 
 	// Display key shares instead of sending emails
-	displayKeyShares(shares)
+	displayKeyShares(shares, threshold)
 
 	// Save key info for the encryption program
 	keyInfo := KeyInfo{
 		MasterKeyHex:   hex.EncodeToString(key),
 		GeneratedAt:    time.Now(),
-		TotalShares:    3,
-		RequiredShares: 2,
+		TotalShares:    totalShares,
+		RequiredShares: threshold,
 	}
 
 	if err := saveKeyInfo(keyInfo); err != nil {
@@ -126,10 +138,65 @@ func createKeyShares(keyHex string, totalShares, requiredShares int) ([]string, 
 	return shareStrings, nil
 }
 
+// loadConfig reads configuration from .env file
+func loadConfig() (int, int, error) {
+	// Default values
+	totalShares := 5
+	threshold := 3
+	
+	envFile := "/app/.env"
+	file, err := os.Open(envFile)
+	if err != nil {
+		fmt.Printf("⚠️  No .env file found, using defaults: %d shares, %d threshold\n", totalShares, threshold)
+		return totalShares, threshold, nil
+	}
+	defer file.Close()
+	
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		
+		key := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
+		
+		switch key {
+		case "SHAMIR_TOTAL_SHARES":
+			if val, err := strconv.Atoi(value); err == nil && val > 0 {
+				totalShares = val
+			}
+		case "SHAMIR_THRESHOLD":
+			if val, err := strconv.Atoi(value); err == nil && val > 0 {
+				threshold = val
+			}
+		}
+	}
+	
+	// Validate configuration
+	if threshold > totalShares {
+		return 0, 0, fmt.Errorf("threshold (%d) cannot be greater than total shares (%d)", threshold, totalShares)
+	}
+	if threshold < 2 {
+		return 0, 0, fmt.Errorf("threshold must be at least 2, got %d", threshold)
+	}
+	if totalShares < 2 {
+		return 0, 0, fmt.Errorf("total shares must be at least 2, got %d", totalShares)
+	}
+	
+	return totalShares, threshold, nil
+}
+
 // displayKeyShares displays key shares in the terminal instead of sending emails
-func displayKeyShares(shares []string) {
+func displayKeyShares(shares []string, threshold int) {
 	fmt.Println("🔐 ===== ENCRYPTION KEY SHARES =====")
-	fmt.Printf("Generated %d key shares (2 required to decrypt)\n", len(shares))
+	fmt.Printf("Generated %d key shares (%d required to decrypt)\n", len(shares), threshold)
 	fmt.Println("⚠️  IMPORTANT: Store these shares securely and separately!")
 	fmt.Println()
 
@@ -141,7 +208,7 @@ func displayKeyShares(shares []string) {
 	}
 
 	fmt.Println("📋 DECRYPTION INSTRUCTIONS:")
-	fmt.Println("   • Any 2 of these 3 shares can reconstruct the master key")
+	fmt.Printf("   • Any %d of these %d shares can reconstruct the master key\n", threshold, len(shares))
 	fmt.Println("   • Each share should be stored by a different person/system")
 	fmt.Println("   • Never store all shares in the same location")
 	fmt.Println("   • These shares can decrypt ALL future snapshots")

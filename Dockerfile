@@ -54,8 +54,9 @@ COPY --from=builder /build/test/decrypt /app/decrypt
 # Copy source files for runtime compilation
 COPY cmd/script/ /app/cmd/script/
 
-# Copy scripts
+# Copy scripts and configuration
 COPY cronjob/cronjob.sh /app/cronjob.sh
+COPY .env /app/.env
 
 # Make scripts executable
 RUN chmod +x /app/snapshot /app/generate_encryption /app/decrypt /app/cronjob.sh

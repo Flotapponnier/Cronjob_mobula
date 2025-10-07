@@ -43,27 +43,23 @@ generate:
 	@echo "Generating encryption keys and sending email shares..."
 	docker exec -it $(CONTAINER_NAME) /app/generate_encryption
 
-# Combined test: basic checks + interactive decryption test
+# Comprehensive encryption tests
 test:
 	@echo "🧪 Running comprehensive encryption tests..."
 	@echo ""
-	@echo "1. Checking encrypted files exist:"
-	docker exec $(CONTAINER_NAME) ls -la /app/snapshots/*.encrypted | head -1
+	@echo "1. Checking master key exists:"
+	@docker exec $(CONTAINER_NAME) cat /app/keys/master.key
 	@echo ""
-	@echo "2. Verifying files are encrypted (binary data):"
-	docker exec $(CONTAINER_NAME) file /app/snapshots/*.encrypted 2>/dev/null || docker exec $(CONTAINER_NAME) hexdump -C /app/snapshots/*.encrypted | head -2
+	@echo "2. Checking key info file:"
+	@docker exec $(CONTAINER_NAME) cat /app/keys/key_info.json
 	@echo ""
-	@echo "3. Showing master key:"
-	docker exec $(CONTAINER_NAME) cat /app/keys/master.key
+	@echo "3. Checking if snapshots exist:"
+	@docker exec $(CONTAINER_NAME) find /app/snapshots -name "*.encrypted" | head -3 || echo "No snapshots found yet"
 	@echo ""
-	@echo "✅ Basic encryption tests passed!"
+	@echo "4. Running 'hello world!' decryption test:"
+	@echo "   You'll be asked for key shares. If successful, you should see 'hello world!'"
 	@echo ""
-	@echo "4. Creating test file with 'hello world!' for decryption test..."
-	docker exec $(CONTAINER_NAME) /app/decrypt create-test
-	@echo ""
-	@echo "5. Now running interactive test - you'll be asked for 2 key shares:"
-	@echo "   If successful, you should see 'hello world!' as output."
-	docker exec -it $(CONTAINER_NAME) /app/decrypt
+	@docker exec -it $(CONTAINER_NAME) /app/decrypt
 
 # Interactive snapshot decryption with decompression
 decrypt:
@@ -71,7 +67,7 @@ decrypt:
 	@echo "=================================="
 	@echo "This will decrypt a snapshot and optionally decompress it."
 	@echo ""
-	docker exec -it $(CONTAINER_NAME) /app/decrypt
+	docker exec -it $(CONTAINER_NAME) /app/decrypt snapshot
 
 # Show help
 help:

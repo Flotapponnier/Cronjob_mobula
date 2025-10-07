@@ -1,43 +1,124 @@
 package main
 
 import (
-	"archive/tar"
-	"bytes"
-	"compress/gzip"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
-	"io"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/hashicorp/vault/shamir"
 )
 
+type KeyInfo struct {
+	MasterKeyHex   string    `json:"master_key_hex"`
+	GeneratedAt    time.Time `json:"generated_at"`
+	TotalShares    int       `json:"total_shares"`
+	RequiredShares int       `json:"required_shares"`
+}
+
 func main() {
-	fmt.Println("🔓 Simple Decryption Test")
-	fmt.Println("=========================")
+	fmt.Println("🔓 Decryption Tool")
+	fmt.Println("==================")
 	
 	if len(os.Args) < 2 {
-		// Interactive mode - ask for key shares
-		runInteractiveTest()
+		// Default: simple hello world test
+		runSimpleTest()
 	} else if os.Args[1] == "create-test" {
 		// Create test encrypted file
 		createTestFile()
+	} else if os.Args[1] == "snapshot" {
+		// Interactive snapshot decryption mode
+		runInteractiveTest()
 	} else {
 		fmt.Println("Usage:")
-		fmt.Println("  simple_decrypt_test                 # Interactive test")
-		fmt.Println("  simple_decrypt_test create-test     # Create test file")
+		fmt.Println("  decrypt                    # Simple 'hello world' test")
+		fmt.Println("  decrypt snapshot           # Decrypt snapshot files")
+		fmt.Println("  decrypt create-test        # Create test file")
 	}
 }
 
+func runSimpleTest() {
+	fmt.Println("🧪 Simple 'hello world!' decryption test")
+	
+	// Load key info to get required threshold
+	keyInfo, err := loadKeyInfo()
+	if err != nil {
+		fmt.Printf("❌ Failed to load key info: %v\n", err)
+		return
+	}
+	
+	fmt.Printf("This test needs %d key shares to decrypt 'hello world!'\n", keyInfo.RequiredShares)
+	fmt.Println()
+	
+	// Check if test file exists
+	testFile := "/app/test_hello.encrypted"
+	if _, err := os.Stat(testFile); os.IsNotExist(err) {
+		fmt.Printf("❌ Test file not found. Creating it first...\n")
+		createTestFile()
+		fmt.Println()
+	}
+	
+	// Get required number of key shares
+	shares := make([]string, keyInfo.RequiredShares)
+	for i := 0; i < keyInfo.RequiredShares; i++ {
+		fmt.Printf("Enter KEY SHARE #%d: ", i+1)
+		var share string
+		fmt.Scanln(&share)
+		shares[i] = strings.TrimSpace(share)
+	}
+	
+	fmt.Println()
+	fmt.Printf("🔐 Reconstructing master key from %d shares...\n", keyInfo.RequiredShares)
+	
+	// Convert hex shares to bytes and reconstruct
+	shareBytes := make([][]byte, len(shares))
+	for i, share := range shares {
+		bytes, err := hex.DecodeString(share)
+		if err != nil {
+			fmt.Printf("❌ Invalid hex in share %d: %v\n", i+1, err)
+			return
+		}
+		shareBytes[i] = bytes
+	}
+	
+	masterKey, err := shamir.Combine(shareBytes)
+	if err != nil {
+		fmt.Printf("❌ Failed to reconstruct key: %v\n", err)
+		return
+	}
+	
+	fmt.Printf("✅ Master key reconstructed!\n")
+	
+	// Decrypt test file
+	fmt.Printf("🔓 Decrypting test message...\n")
+	decryptedData, err := decryptFile(testFile, masterKey)
+	if err != nil {
+		fmt.Printf("❌ Decryption failed: %v\n", err)
+		return
+	}
+	
+	fmt.Printf("✅ SUCCESS! Decrypted message: \"%s\"\n", string(decryptedData))
+	fmt.Println()
+	fmt.Println("🎉 Your Shamir Secret Sharing system works perfectly!")
+}
+
 func runInteractiveTest() {
-	fmt.Println("This will decrypt a snapshot using 2 key shares.")
+	fmt.Println("🔓 Snapshot decryption mode")
+	
+	// Load key info to get required threshold
+	keyInfo, err := loadKeyInfo()
+	if err != nil {
+		fmt.Printf("❌ Failed to load key info: %v\n", err)
+		fmt.Println("Using default: 3 shares required")
+		keyInfo.RequiredShares = 3
+	}
+	
+	fmt.Printf("This will decrypt a snapshot using %d key shares.\n", keyInfo.RequiredShares)
 	fmt.Println()
 	
 	// Get snapshot file path
@@ -52,37 +133,30 @@ func runInteractiveTest() {
 		return
 	}
 	
-	// Get first key share
-	fmt.Print("Enter KEY SHARE #1: ")
-	var share1 string
-	fmt.Scanln(&share1)
-	share1 = strings.TrimSpace(share1)
-	
-	// Get second key share  
-	fmt.Print("Enter KEY SHARE #2: ")
-	var share2 string
-	fmt.Scanln(&share2)
-	share2 = strings.TrimSpace(share2)
-	
-	fmt.Println()
-	fmt.Printf("🔐 Attempting to reconstruct master key from shares...\n")
-	
-	// Convert hex shares to bytes
-	shareBytes1, err := hex.DecodeString(share1)
-	if err != nil {
-		fmt.Printf("❌ Invalid hex in share 1: %v\n", err)
-		return
+	// Get required number of key shares
+	shares := make([]string, keyInfo.RequiredShares)
+	for i := 0; i < keyInfo.RequiredShares; i++ {
+		fmt.Printf("Enter KEY SHARE #%d: ", i+1)
+		fmt.Scanln(&shares[i])
+		shares[i] = strings.TrimSpace(shares[i])
 	}
 	
-	shareBytes2, err := hex.DecodeString(share2)
-	if err != nil {
-		fmt.Printf("❌ Invalid hex in share 2: %v\n", err)
-		return
+	fmt.Println()
+	fmt.Printf("🔐 Attempting to reconstruct master key from %d shares...\n", keyInfo.RequiredShares)
+	
+	// Convert hex shares to bytes
+	shareBytes := make([][]byte, len(shares))
+	for i, share := range shares {
+		bytes, err := hex.DecodeString(share)
+		if err != nil {
+			fmt.Printf("❌ Invalid hex in share %d: %v\n", i+1, err)
+			return
+		}
+		shareBytes[i] = bytes
 	}
 	
 	// Reconstruct master key
-	shares := [][]byte{shareBytes1, shareBytes2}
-	masterKey, err := shamir.Combine(shares)
+	masterKey, err := shamir.Combine(shareBytes)
 	if err != nil {
 		fmt.Printf("❌ Failed to reconstruct key: %v\n", err)
 		return
@@ -100,23 +174,9 @@ func runInteractiveTest() {
 	}
 	
 	fmt.Printf("✅ SUCCESS! Decrypted snapshot size: %d bytes\n", len(decryptedData))
-	fmt.Println("💾 Snapshot decrypted successfully - it's a tar.gz archive")
+	fmt.Println("💾 Snapshot decrypted successfully!")
 	fmt.Println()
-	
-	// Ask if user wants to decompress and show contents
-	fmt.Print("Do you want me to decompress it and show the inside? (y/n): ")
-	var response string
-	fmt.Scanln(&response)
-	response = strings.TrimSpace(strings.ToLower(response))
-	
-	if response == "y" || response == "yes" {
-		if err := decompressAndShow(decryptedData, filePath); err != nil {
-			fmt.Printf("❌ Failed to decompress: %v\n", err)
-		}
-	}
-	
-	fmt.Println()
-	fmt.Println("🎉 Your Shamir Secret Sharing system works perfectly!")
+	fmt.Println("🎉 Decryption completed successfully!")
 }
 
 func createTestFile() {
@@ -212,99 +272,20 @@ func decryptFile(filename string, key []byte) ([]byte, error) {
 	return plaintext, nil
 }
 
-// decompressAndShow decompresses the tar.gz data and extracts it to a folder
-func decompressAndShow(data []byte, originalPath string) error {
-	fmt.Println("📂 Decompressing and extracting snapshot...")
+
+// loadKeyInfo loads key information from the key info file
+func loadKeyInfo() (KeyInfo, error) {
+	var keyInfo KeyInfo
 	
-	// Create decrypted folder with timestamp
-	timestamp := time.Now().Format("20060102_150405")
-	baseName := filepath.Base(originalPath)
-	baseName = strings.TrimSuffix(baseName, ".encrypted")
-	decryptedDir := fmt.Sprintf("/app/decrypted/%s_%s", baseName, timestamp)
-	
-	if err := os.MkdirAll(decryptedDir, 0755); err != nil {
-		return fmt.Errorf("failed to create decrypted directory: %v", err)
-	}
-	
-	// Decompress gzip
-	gzReader, err := gzip.NewReader(bytes.NewReader(data))
+	infoFile := "/app/keys/key_info.json"
+	data, err := os.ReadFile(infoFile)
 	if err != nil {
-		return fmt.Errorf("failed to create gzip reader: %v", err)
-	}
-	defer gzReader.Close()
-	
-	// Extract tar archive
-	tarReader := tar.NewReader(gzReader)
-	fileCount := 0
-	totalSize := int64(0)
-	
-	for {
-		header, err := tarReader.Next()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return fmt.Errorf("tar reading error: %v", err)
-		}
-		
-		targetPath := filepath.Join(decryptedDir, header.Name)
-		
-		switch header.Typeflag {
-		case tar.TypeDir:
-			if err := os.MkdirAll(targetPath, os.FileMode(header.Mode)); err != nil {
-				return fmt.Errorf("failed to create directory %s: %v", targetPath, err)
-			}
-		case tar.TypeReg:
-			fileCount++
-			totalSize += header.Size
-			
-			// Create parent directory if needed
-			if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
-				return fmt.Errorf("failed to create parent directory for %s: %v", targetPath, err)
-			}
-			
-			// Create file
-			file, err := os.OpenFile(targetPath, os.O_CREATE|os.O_RDWR, os.FileMode(header.Mode))
-			if err != nil {
-				return fmt.Errorf("failed to create file %s: %v", targetPath, err)
-			}
-			
-			// Copy file content
-			if _, err := io.Copy(file, tarReader); err != nil {
-				file.Close()
-				return fmt.Errorf("failed to copy file content for %s: %v", targetPath, err)
-			}
-			file.Close()
-		}
+		return keyInfo, fmt.Errorf("failed to read key info file: %v", err)
 	}
 	
-	fmt.Printf("✅ Extracted to: %s\n", decryptedDir)
-	fmt.Printf("📊 Files extracted: %d\n", fileCount)
-	fmt.Printf("📏 Total size: %d bytes (%.2f MB)\n", totalSize, float64(totalSize)/1024/1024)
-	fmt.Println()
-	
-	// Show directory tree
-	fmt.Println("📁 Directory structure:")
-	cmd := exec.Command("tree", decryptedDir, "-L", "3")
-	if output, err := cmd.Output(); err == nil {
-		fmt.Print(string(output))
-	} else {
-		// Fallback to ls if tree is not available
-		cmd = exec.Command("ls", "-la", decryptedDir)
-		if output, err := cmd.Output(); err == nil {
-			fmt.Print(string(output))
-		}
+	if err := json.Unmarshal(data, &keyInfo); err != nil {
+		return keyInfo, fmt.Errorf("failed to parse key info: %v", err)
 	}
 	
-	// Show metadata if exists
-	metadataPath := filepath.Join(decryptedDir, "metadata.txt")
-	if _, err := os.Stat(metadataPath); err == nil {
-		fmt.Println()
-		fmt.Println("📄 Snapshot metadata:")
-		if content, err := os.ReadFile(metadataPath); err == nil {
-			fmt.Print(string(content))
-		}
-	}
-	
-	return nil
+	return keyInfo, nil
 }

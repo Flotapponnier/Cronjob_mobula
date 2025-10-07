@@ -27,8 +27,8 @@ func createArchitecturedSnapshot() (string, string, error) {
 		return "", "", fmt.Errorf("failed to create snapshot directory structure: %v", err)
 	}
 	
-	// Generate snapshot name with full date and time
-	timestamp := now.Format("02012006_150405") // DDMMYYYY_HHMMSS
+	// Generate snapshot name with date and time (HHMM format)
+	timestamp := now.Format("02012006_1504") // DDMMYYYY_HHMM
 	snapshotName := fmt.Sprintf("snapshot_%s", timestamp)
 	snapshotPath := filepath.Join(snapshotDir, snapshotName)
 	
