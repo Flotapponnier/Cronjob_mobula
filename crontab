@@ -1,0 +1,5 @@
+# Cron configuration for snapshots every 30 seconds
+* * * * * /app/snapshot >> /var/log/cron.log 2>&1
+* * * * * sleep 30; /app/snapshot >> /var/log/cron.log 2>&1
+
+# Empty line required at the end of cron file
