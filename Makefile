@@ -61,13 +61,13 @@ test:
 	@echo ""
 	@docker exec -it $(CONTAINER_NAME) /app/decrypt
 
-# Interactive snapshot decryption with decompression
+# Interactive snapshot decryption
 decrypt:
 	@echo "🔓 Interactive Snapshot Decryption"
 	@echo "=================================="
-	@echo "This will decrypt a snapshot and optionally decompress it."
+	@echo "This will decrypt a snapshot file."
 	@echo ""
-	docker exec -it $(CONTAINER_NAME) /app/decrypt snapshot
+	@docker exec -it $(CONTAINER_NAME) /app/decrypt snapshot
 
 # Show help
 help:

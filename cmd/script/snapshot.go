@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -72,6 +73,9 @@ func main() {
 	
 	// Show snapshot statistics
 	getSnapshotStats()
+	
+	// Check and apply retention policy
+	checkRetentionPolicy()
 	
 	logInfo("Encrypted snapshot %s has been saved: %s", snapshotName, encryptedPath)
 }
@@ -151,6 +155,109 @@ func getSourcePath() string {
 	}
 	
 	return defaultPath
+}
+
+// checkRetentionPolicy checks if cleanup is needed based on DAY_RETENTION setting
+func checkRetentionPolicy() {
+	retentionDays := getRetentionDays()
+	if retentionDays <= 0 {
+		return // No cleanup if retention is 0 or negative
+	}
+	
+	// Check if we need to clean up old snapshots
+	cutoffTime := time.Now().AddDate(0, 0, -retentionDays)
+	logInfo("🗑️ Checking retention policy: removing snapshots older than %d days", retentionDays)
+	
+	removed := 0
+	totalSize := int64(0)
+	
+	// Walk through all snapshots and remove old ones
+	err := filepath.Walk(snapshotDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil // Continue on errors
+		}
+		
+		// Only process encrypted snapshot files
+		if !info.IsDir() && strings.HasSuffix(info.Name(), ".encrypted") {
+			if info.ModTime().Before(cutoffTime) {
+				totalSize += info.Size()
+				if err := os.Remove(path); err != nil {
+					logError("Failed to remove old snapshot %s: %v", path, err)
+				} else {
+					removed++
+					logInfo("🗑️ Removed old snapshot: %s", filepath.Base(path))
+				}
+			}
+		}
+		
+		return nil
+	})
+	
+	if err != nil {
+		logError("Failed to check retention policy: %v", err)
+		return
+	}
+	
+	if removed > 0 {
+		logInfo("✅ Retention cleanup complete: removed %d snapshots (%.2f MB freed)", removed, float64(totalSize)/1024/1024)
+		
+		// Remove empty directories after cleanup
+		removeEmptyDirs(snapshotDir)
+	}
+}
+
+// getRetentionDays reads retention policy from .env file
+func getRetentionDays() int {
+	defaultRetention := 0 // No cleanup by default
+	
+	envFile := "/app/.env"
+	file, err := os.Open(envFile)
+	if err != nil {
+		return defaultRetention
+	}
+	defer file.Close()
+	
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		
+		key := strings.TrimSpace(parts[0])
+		value := strings.TrimSpace(parts[1])
+		
+		if key == "DAY_RETENTION" {
+			if days, err := strconv.Atoi(value); err == nil && days >= 0 {
+				return days
+			}
+		}
+	}
+	
+	return defaultRetention
+}
+
+// removeEmptyDirs removes empty directories recursively
+func removeEmptyDirs(root string) {
+	filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil || path == root {
+			return err
+		}
+		
+		if info.IsDir() {
+			// Try to remove if empty
+			if err := os.Remove(path); err == nil {
+				logInfo("🗂️ Removed empty directory: %s", strings.TrimPrefix(path, root+"/"))
+			}
+		}
+		
+		return nil
+	})
 }
 
 
