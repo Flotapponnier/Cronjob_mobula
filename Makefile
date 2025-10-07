@@ -1,4 +1,4 @@
-.PHONY: build up down clean logs shell
+.PHONY: build up down stop destroy clean logs shell
 
 # Docker settings
 IMAGE_NAME := snapshot-cron
@@ -12,14 +12,36 @@ build:
 # Start the container
 up: build
 	@echo "Starting snapshot container..."
-	docker run -d --name $(CONTAINER_NAME) $(IMAGE_NAME)
+	@if docker ps -a --format "table {{.Names}}" | grep -q "^$(CONTAINER_NAME)$$"; then \
+		echo "Container $(CONTAINER_NAME) already exists. Starting it..."; \
+		docker start $(CONTAINER_NAME); \
+	else \
+		echo "Creating new container..."; \
+		docker run -d --name $(CONTAINER_NAME) $(IMAGE_NAME); \
+	fi
 	@echo "Container started. Use 'make logs' to view output."
 
-# Stop and remove the container
+# Stop the container (without removing)
 down:
-	@echo "Stopping and removing container..."
+	@echo "Stopping container..."
 	-docker stop $(CONTAINER_NAME)
-	-docker rm $(CONTAINER_NAME)
+
+# Stop the container (alias for down)
+stop: down
+
+# Destroy the container (with confirmation)
+destroy:
+	@echo "⚠️  WARNING: This will permanently delete the container!"
+	@echo -n "Are you sure you want to destroy the container? [y/N]: "; \
+	read answer; \
+	if [ "$$answer" = "y" ] || [ "$$answer" = "Y" ]; then \
+		echo "Stopping and removing container..."; \
+		docker stop $(CONTAINER_NAME) 2>/dev/null || true; \
+		docker rm $(CONTAINER_NAME) 2>/dev/null || true; \
+		echo "Container destroyed."; \
+	else \
+		echo "Operation cancelled."; \
+	fi
 
 # View container logs
 logs:
@@ -30,7 +52,7 @@ shell:
 	docker exec -it $(CONTAINER_NAME) /bin/bash
 
 # Clean up (remove container and image)
-clean: down
+clean: destroy
 	@echo "Cleaning up Docker image..."
 	-docker rmi $(IMAGE_NAME)
 
@@ -74,12 +96,18 @@ help:
 	@echo "Available commands:"
 	@echo "  build     - Build the Docker image"
 	@echo "  up        - Build and start the container"
-	@echo "  down      - Stop and remove the container"
+	@echo "  down      - Stop the container (without removing)"
+	@echo "  stop      - Stop the container (alias for down)"
+	@echo "  destroy   - Stop and remove the container (with confirmation)"
 	@echo "  logs      - View container logs"
 	@echo "  shell     - Get shell access to container"
 	@echo "  snapshots - List snapshot files"
 	@echo "  generate  - Generate encryption keys and send shares"
 	@echo "  test      - Comprehensive encryption test + interactive decryption"
 	@echo "  decrypt   - Interactive snapshot decryption with decompression"
-	@echo "  clean     - Remove container and image"
+	@echo "  clean     - Remove container and image (calls destroy)"
 	@echo "  help      - Show this help message"
+	@echo ""
+	@echo "Note: 'down' and 'stop' only stop the container."
+	@echo "      Use 'destroy' to permanently remove it."
+	@echo "      Use 'clean' to remove both container and image."

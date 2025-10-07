@@ -72,7 +72,9 @@ func main() {
 	}
 	
 	// Show snapshot statistics
-	getSnapshotStats()
+	logSectionStart("📊 Snapshot Organization Stats")
+	getSnapshotStatsContent()
+	logSectionEnd()
 	
 	// Check and apply retention policy
 	checkRetentionPolicy()

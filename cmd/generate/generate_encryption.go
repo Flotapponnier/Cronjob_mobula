@@ -14,6 +14,15 @@ import (
 	"github.com/hashicorp/vault/shamir"
 )
 
+// ANSI color codes
+const (
+	ColorReset  = "\033[0m"
+	ColorBlue   = "\033[34m"
+	ColorGreen  = "\033[32m"
+	ColorYellow = "\033[33m"
+	ColorRed    = "\033[31m"
+)
+
 const (
 	keyFile      = "/app/keys/master.key"
 	keyDir       = "/app/keys"
@@ -90,7 +99,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Println("✅ Encryption setup completed successfully!")
+	fmt.Printf("%s✅ Encryption setup completed successfully!%s\n", ColorGreen, ColorReset)
 	fmt.Printf("🔑 Master key saved to: %s\n", keyFile)
 	fmt.Println("📝 Your snapshot program can now encrypt data using the master key")
 }
@@ -134,7 +143,7 @@ func createKeyShares(keyHex string, totalShares, requiredShares int) ([]string, 
 		shareStrings[i] = hex.EncodeToString(share)
 	}
 
-	fmt.Printf("✅ Created %d key shares successfully\n", len(shareStrings))
+	fmt.Printf("%s✅ Created %d key shares successfully%s\n", ColorGreen, len(shareStrings), ColorReset)
 	return shareStrings, nil
 }
 
@@ -203,7 +212,11 @@ func displayKeyShares(shares []string, threshold int) {
 	for i, share := range shares {
 		shareNumber := i + 1
 		fmt.Printf("🔑 KEY SHARE #%d:\n", shareNumber)
-		fmt.Printf("   %s\n", share)
+		
+		// Create a box around the key with blue color
+		fmt.Println("   /" + strings.Repeat("-", len(share)+2) + "\\")
+		fmt.Printf("   | %s%s%s |\n", ColorBlue, share, ColorReset)
+		fmt.Println("   \\" + strings.Repeat("-", len(share)+2) + "/")
 		fmt.Println()
 	}
 

@@ -14,6 +14,13 @@ import (
 	"github.com/hashicorp/vault/shamir"
 )
 
+// ANSI color codes
+const (
+	ColorReset  = "\033[0m"
+	ColorGreen  = "\033[32m"
+	ColorRed    = "\033[31m"
+)
+
 type KeyInfo struct {
 	MasterKeyHex   string    `json:"master_key_hex"`
 	GeneratedAt    time.Time `json:"generated_at"`
@@ -48,7 +55,7 @@ func runSimpleTest() {
 	// Load key info to get required threshold
 	keyInfo, err := loadKeyInfo()
 	if err != nil {
-		fmt.Printf("❌ Failed to load key info: %v\n", err)
+		fmt.Printf("%s❌ Failed to load key info: %v%s\n", ColorRed, err, ColorReset)
 		return
 	}
 	
@@ -58,7 +65,7 @@ func runSimpleTest() {
 	// Check if test file exists
 	testFile := "/app/test_hello.encrypted"
 	if _, err := os.Stat(testFile); os.IsNotExist(err) {
-		fmt.Printf("❌ Test file not found. Creating it first...\n")
+		fmt.Printf("%s❌ Test file not found. Creating it first...%s\n", ColorRed, ColorReset)
 		createTestFile()
 		fmt.Println()
 	}
@@ -80,7 +87,7 @@ func runSimpleTest() {
 	for i, share := range shares {
 		bytes, err := hex.DecodeString(share)
 		if err != nil {
-			fmt.Printf("❌ Invalid hex in share %d: %v\n", i+1, err)
+			fmt.Printf("%s❌ Invalid hex in share %d: %v%s\n", ColorRed, i+1, err, ColorReset)
 			return
 		}
 		shareBytes[i] = bytes
@@ -88,23 +95,23 @@ func runSimpleTest() {
 	
 	masterKey, err := shamir.Combine(shareBytes)
 	if err != nil {
-		fmt.Printf("❌ Failed to reconstruct key: %v\n", err)
+		fmt.Printf("%s❌ Failed to reconstruct key: %v%s\n", ColorRed, err, ColorReset)
 		return
 	}
 	
-	fmt.Printf("✅ Master key reconstructed!\n")
+	fmt.Printf("%s✅ Master key reconstructed!%s\n", ColorGreen, ColorReset)
 	
 	// Decrypt test file
 	fmt.Printf("🔓 Decrypting test message...\n")
 	decryptedData, err := decryptFile(testFile, masterKey)
 	if err != nil {
-		fmt.Printf("❌ Decryption failed: %v\n", err)
+		fmt.Printf("%s❌ Decryption failed: %v%s\n", ColorRed, err, ColorReset)
 		return
 	}
 	
-	fmt.Printf("✅ SUCCESS! Decrypted message: \"%s\"\n", string(decryptedData))
+	fmt.Printf("%s✅ SUCCESS! Decrypted message: \"%s\"%s\n", ColorGreen, string(decryptedData), ColorReset)
 	fmt.Println()
-	fmt.Println("🎉 Your Shamir Secret Sharing system works perfectly!")
+	fmt.Printf("%s🎉 Your Shamir Secret Sharing system works perfectly!%s\n", ColorGreen, ColorReset)
 }
 
 func runInteractiveTest() {
@@ -113,7 +120,7 @@ func runInteractiveTest() {
 	// Load key info to get required threshold
 	keyInfo, err := loadKeyInfo()
 	if err != nil {
-		fmt.Printf("❌ Failed to load key info: %v\n", err)
+		fmt.Printf("%s❌ Failed to load key info: %v%s\n", ColorRed, err, ColorReset)
 		fmt.Println("Using default: 3 shares required")
 		keyInfo.RequiredShares = 3
 	}
@@ -129,7 +136,7 @@ func runInteractiveTest() {
 	
 	// Check if file exists
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		fmt.Printf("❌ File %s not found.\n", filePath)
+		fmt.Printf("%s❌ File %s not found.%s\n", ColorRed, filePath, ColorReset)
 		return
 	}
 	
@@ -149,7 +156,7 @@ func runInteractiveTest() {
 	for i, share := range shares {
 		bytes, err := hex.DecodeString(share)
 		if err != nil {
-			fmt.Printf("❌ Invalid hex in share %d: %v\n", i+1, err)
+			fmt.Printf("%s❌ Invalid hex in share %d: %v%s\n", ColorRed, i+1, err, ColorReset)
 			return
 		}
 		shareBytes[i] = bytes
@@ -158,25 +165,25 @@ func runInteractiveTest() {
 	// Reconstruct master key
 	masterKey, err := shamir.Combine(shareBytes)
 	if err != nil {
-		fmt.Printf("❌ Failed to reconstruct key: %v\n", err)
+		fmt.Printf("%s❌ Failed to reconstruct key: %v%s\n", ColorRed, err, ColorReset)
 		return
 	}
 	
-	fmt.Printf("✅ Master key reconstructed: %s\n", hex.EncodeToString(masterKey))
+	fmt.Printf("%s✅ Master key reconstructed: %s%s\n", ColorGreen, hex.EncodeToString(masterKey), ColorReset)
 	
 	// Try to decrypt the specified file
 	fmt.Printf("🔓 Decrypting snapshot: %s\n", filePath)
 	
 	decryptedData, err := decryptFile(filePath, masterKey)
 	if err != nil {
-		fmt.Printf("❌ Decryption failed: %v\n", err)
+		fmt.Printf("%s❌ Decryption failed: %v%s\n", ColorRed, err, ColorReset)
 		return
 	}
 	
-	fmt.Printf("✅ SUCCESS! Decrypted snapshot size: %d bytes\n", len(decryptedData))
-	fmt.Println("💾 Snapshot decrypted successfully!")
+	fmt.Printf("%s✅ SUCCESS! Decrypted snapshot size: %d bytes%s\n", ColorGreen, len(decryptedData), ColorReset)
+	fmt.Printf("%s💾 Snapshot decrypted successfully!%s\n", ColorGreen, ColorReset)
 	fmt.Println()
-	fmt.Println("🎉 Decryption completed successfully!")
+	fmt.Printf("%s🎉 Decryption completed successfully!%s\n", ColorGreen, ColorReset)
 }
 
 func createTestFile() {
@@ -185,14 +192,14 @@ func createTestFile() {
 	// Read the master key
 	keyHex, err := os.ReadFile("/app/keys/master.key")
 	if err != nil {
-		fmt.Printf("❌ Cannot read master key: %v\n", err)
+		fmt.Printf("%s❌ Cannot read master key: %v%s\n", ColorRed, err, ColorReset)
 		return
 	}
 	
 	keyStr := strings.TrimSpace(string(keyHex))
 	masterKey, err := hex.DecodeString(keyStr)
 	if err != nil {
-		fmt.Printf("❌ Cannot decode master key: %v\n", err)
+		fmt.Printf("%s❌ Cannot decode master key: %v%s\n", ColorRed, err, ColorReset)
 		return
 	}
 	
@@ -201,18 +208,18 @@ func createTestFile() {
 	
 	encryptedData, err := encryptData(plaintext, masterKey)
 	if err != nil {
-		fmt.Printf("❌ Encryption failed: %v\n", err)
+		fmt.Printf("%s❌ Encryption failed: %v%s\n", ColorRed, err, ColorReset)
 		return
 	}
 	
 	// Save encrypted file
 	testFile := "/app/test_hello.encrypted"
 	if err := os.WriteFile(testFile, encryptedData, 0600); err != nil {
-		fmt.Printf("❌ Failed to save test file: %v\n", err)
+		fmt.Printf("%s❌ Failed to save test file: %v%s\n", ColorRed, err, ColorReset)
 		return
 	}
 	
-	fmt.Printf("✅ Test file created: %s\n", testFile)
+	fmt.Printf("%s✅ Test file created: %s%s\n", ColorGreen, testFile, ColorReset)
 	fmt.Printf("📝 Contains encrypted: \"hello world!\"\n")
 	fmt.Printf("🔑 Encrypted with master key: %s\n", hex.EncodeToString(masterKey))
 	fmt.Println()
@@ -271,7 +278,6 @@ func decryptFile(filename string, key []byte) ([]byte, error) {
 	
 	return plaintext, nil
 }
-
 
 // loadKeyInfo loads key information from the key info file
 func loadKeyInfo() (KeyInfo, error) {

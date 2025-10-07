@@ -2,32 +2,72 @@ package main
 
 import (
 	"fmt"
-	"os"
+	"strings"
 	"time"
 )
 
 const logFile = "/var/log/cron.log"
 
+// ANSI color codes
+const (
+	ColorReset  = "\033[0m"
+	ColorBlue   = "\033[34m"
+	ColorGreen  = "\033[32m"
+	ColorYellow = "\033[33m"
+	ColorRed    = "\033[31m"
+)
+
 func logInfo(format string, args ...interface{}) {
-	message := fmt.Sprintf("%s: %s", time.Now().Format(time.RFC3339), fmt.Sprintf(format, args...))
-	fmt.Println(message)
+	timestamp := time.Now().Format(time.RFC3339)
+	content := fmt.Sprintf(format, args...)
 	
-	// Also log to file
-	file, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err == nil {
-		defer file.Close()
-		fmt.Fprintln(file, message)
-	}
+	// Apply color formatting based on content
+	coloredContent := colorizeLogContent(content)
+	
+	message := fmt.Sprintf("%s: %s", timestamp, coloredContent)
+	fmt.Println(message)
 }
 
 func logError(format string, args ...interface{}) {
-	message := fmt.Sprintf("%s: ERROR: %s", time.Now().Format(time.RFC3339), fmt.Sprintf(format, args...))
-	fmt.Println(message)
+	timestamp := time.Now().Format(time.RFC3339)
+	content := fmt.Sprintf(format, args...)
 	
-	// Also log to file
-	file, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err == nil {
-		defer file.Close()
-		fmt.Fprintln(file, message)
+	message := fmt.Sprintf("%s: %sERROR: %s%s", timestamp, ColorRed, content, ColorReset)
+	fmt.Println(message)
+}
+
+// colorizeLogContent applies colors to specific log messages
+func colorizeLogContent(content string) string {
+	// Green for successful uploads
+	if strings.Contains(content, "Successfully uploaded to cloud") {
+		parts := strings.SplitN(content, ": ", 2)
+		if len(parts) == 2 {
+			return fmt.Sprintf("%s%s%s: %s%s%s", ColorGreen, parts[0], ColorReset, ColorBlue, parts[1], ColorReset)
+		}
+		return fmt.Sprintf("%s%s%s", ColorGreen, content, ColorReset)
 	}
+	
+	// Blue for file paths and snapshot info
+	if strings.Contains(content, "Created snapshot directory structure") ||
+	   strings.Contains(content, "Snapshot will be saved as") ||
+	   strings.Contains(content, "Encrypted snapshot") && strings.Contains(content, "has been saved") {
+		parts := strings.SplitN(content, ": ", 2)
+		if len(parts) == 2 {
+			return fmt.Sprintf("%s: %s%s%s", parts[0], ColorBlue, parts[1], ColorReset)
+		}
+	}
+	
+	return content
+}
+
+// logSectionStart prints a section header with separators
+func logSectionStart(title string) {
+	fmt.Println("---------------------------------------")
+	logInfo("%s", title)
+	fmt.Println("---------------------------------------")
+}
+
+// logSectionEnd prints section footer
+func logSectionEnd() {
+	fmt.Println("---------------------------------------")
 }

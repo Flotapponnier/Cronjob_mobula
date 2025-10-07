@@ -41,7 +41,11 @@ func createArchitecturedSnapshot() (string, string, error) {
 // getSnapshotStats returns statistics about the current snapshot organization
 func getSnapshotStats() {
 	logInfo("📊 Snapshot Organization Stats:")
-	
+	getSnapshotStatsContent()
+}
+
+// getSnapshotStatsContent shows the statistics without the header
+func getSnapshotStatsContent() {
 	// Walk through the base directory and count folders
 	dayFolders := 0
 	hourFolders := 0
