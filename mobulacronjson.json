@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "mobulacronjob",
+  "private_key_id": "6e0c4ef41101701fcd3df6643cb197528efe2b24",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQDOVacqVjQH9seS\nqXYMRWxQtP0+fWG5KzRljapYDNP88ZGTWRrtyjRrL1cshlSFU2/cpDJ2LgN6OtM+\nd4/UlmqgIW+dunZq4r4qWe7W5d2668RHacpd1eA79BxBEjsvhxd8kw37gF/jnbsz\nVOnKA9rWGtmwbURM0QCt8WoYyYv1mjmfnErbcclJb0ttXQusv/cxe8jUI8TdDBIp\nvYsL8njbYrxZYEk/JI9gC3DrPjq1q3UnsE3YdWxJXCRdG9roxcY7kM5lEmY+MrE5\nlm6Th2Y0bGDWT0W3N2xCxIIGIiNGT/mm9XrULVUmQgEt0DdetneQ/A7sO8WzmRKm\nPrNzJaKLAgMBAAECggEATbZ18RypmSxJy4PW6dVF7/nS/fPEWDUdFXivZV1jhHvJ\njBk96rzDVHFuoF7xu4uK8KvJM7it5537TSZD/louy6P8QYhmrGg9Hn9j1P2brxi4\ngvsl1ITG4V3WPG3s68AySOGsHQMjWnvgc3tyWHtuM0DGp8vnsxTu8BSilLZoZ/Zi\nyFucsTjwd079kSK49pBzDp4rTtIrGFfPY69XYMqbpjXf+AzpSNLUJcHJNB6GTypL\nTjdK/uauC+yNLhQ6DnKqMMhNpwj0VuuVPlK31YoSSOig5GnqlcIQPQJiLdCUsjuh\n6qE7ZN2b5cGmC62dOxRVwcYVPzKcPIOBL9eZcuw0tQKBgQDl2ABVMmEc3aLoRjrW\nXeX9jLlx6okmhyhSJw24irM4AXV7VH78FnCyuBrwNOl11sqYpy51uEno6JIFRdof\nKDZUrG5POHwk/DXGNB9An71b4W/uvwSDNgTAxGPTDaFtVvheZr2dYR5aNNCUwHs6\niyNpWFT+B2kzA+PTvmKXNqgEXwKBgQDl0MNSx+XL7oTKU0QEhLiNacZz1pKoziKv\nlRiXrsL9fdb5fS2ULzWbchEBwMB9xKic5l4vfdIs5AbmwKmduwuyDbjDFPm+L8Le\nQVg621GxjnDEXbcT4Zul8w8IkPqcEiJvuZeOO4EuXDm5/ZsBVK5OzrTMIRN7gqm1\n9ErCOToxVQKBgAIX/qDIDbRqnHJLOXv8bPzrTEEqZsdwEcD11B0rPkizUrOl6GY5\nehtWrAAmKz5Ej6HmW/j8jcfOXo4nvb3s6tnInFSiahcYKRE+Jk67Zckxe4iMOulL\nE64B2/rvM9pAIZESlIWbfeBKfN/uBPFalR7/i/6oaJ/rWCb0pAdGmy83AoGBAJBn\naRQu/znxGgd34plkPAK/oC9ReL4RKMJjURyed2+JDvedrHIcZ/bQ6dbMIyfj1n8g\nUbZNvS7v6VY9YVb3HRY4gQwztenHYQ7+yE3TWbXT5w+8Qzl+3aqc26lqT86ZpoHF\ngHGi+j0DPlKcBDYF27ExOXG6pt9I7xKh+geopeQxAoGBALWkMHuNjEVAZq41G/M5\n9ChS5P2ZHYCE7NnYgeK4tpnc1v7dxn/QzhYbFJt4GcUhBWlMrGaqH1RhLeFKEMqJ\ns3pEllHPOd9reFt2L5Cdm6NtBzZhJxBGhMqLuaOmqs2N1P8Vo+mTogpZEDYqTQQq\ntMnLIwY3rJVjbw9pId8c8noO\n-----END PRIVATE KEY-----\n",
+  "client_email": "snapshot-uploader@mobulacronjob.iam.gserviceaccount.com",
+  "client_id": "117438871171919998666",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/snapshot-uploader%40mobulacronjob.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}

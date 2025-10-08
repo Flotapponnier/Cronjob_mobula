@@ -209,7 +209,7 @@ func checkRetentionPolicy() {
 
 	err := filepath.Walk(snapshotDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			return nil // Continue on errors
+			return nil
 		}
 
 		if !info.IsDir() && strings.HasSuffix(info.Name(), ".encrypted") {
@@ -281,7 +281,6 @@ func removeEmptyDirs(root string) {
 		}
 
 		if info.IsDir() {
-			// Try to remove if empty
 			if err := os.Remove(path); err == nil {
 				logInfo("🗂️ Removed empty directory: %s", strings.TrimPrefix(path, root+"/"))
 			}

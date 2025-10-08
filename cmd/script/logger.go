@@ -6,9 +6,6 @@ import (
 	"time"
 )
 
-const logFile = "/var/log/cron.log"
-
-// ANSI color codes
 const (
 	ColorReset  = "\033[0m"
 	ColorBlue   = "\033[34m"
@@ -20,10 +17,9 @@ const (
 func logInfo(format string, args ...interface{}) {
 	timestamp := time.Now().Format(time.RFC3339)
 	content := fmt.Sprintf(format, args...)
-	
-	// Apply color formatting based on content
+
 	coloredContent := colorizeLogContent(content)
-	
+
 	message := fmt.Sprintf("%s: %s", timestamp, coloredContent)
 	fmt.Println(message)
 }
@@ -31,14 +27,12 @@ func logInfo(format string, args ...interface{}) {
 func logError(format string, args ...interface{}) {
 	timestamp := time.Now().Format(time.RFC3339)
 	content := fmt.Sprintf(format, args...)
-	
+
 	message := fmt.Sprintf("%s: %sERROR: %s%s", timestamp, ColorRed, content, ColorReset)
 	fmt.Println(message)
 }
 
-// colorizeLogContent applies colors to specific log messages
 func colorizeLogContent(content string) string {
-	// Green for successful uploads
 	if strings.Contains(content, "Successfully uploaded to cloud") {
 		parts := strings.SplitN(content, ": ", 2)
 		if len(parts) == 2 {
@@ -46,28 +40,26 @@ func colorizeLogContent(content string) string {
 		}
 		return fmt.Sprintf("%s%s%s", ColorGreen, content, ColorReset)
 	}
-	
-	// Blue for file paths and snapshot info
+
 	if strings.Contains(content, "Created snapshot directory structure") ||
-	   strings.Contains(content, "Snapshot will be saved as") ||
-	   strings.Contains(content, "Encrypted snapshot") && strings.Contains(content, "has been saved") {
+		strings.Contains(content, "Snapshot will be saved as") ||
+		strings.Contains(content, "Encrypted snapshot") && strings.Contains(content, "has been saved") {
 		parts := strings.SplitN(content, ": ", 2)
 		if len(parts) == 2 {
 			return fmt.Sprintf("%s: %s%s%s", parts[0], ColorBlue, parts[1], ColorReset)
 		}
 	}
-	
+
 	return content
 }
 
-// logSectionStart prints a section header with separators
 func logSectionStart(title string) {
 	fmt.Println("---------------------------------------")
 	logInfo("%s", title)
 	fmt.Println("---------------------------------------")
 }
 
-// logSectionEnd prints section footer
 func logSectionEnd() {
 	fmt.Println("---------------------------------------")
 }
+

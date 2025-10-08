@@ -100,14 +100,12 @@ func main() {
 	fmt.Println("📝 Your snapshot program can now encrypt data using the master key")
 }
 
-// generateMasterKey creates a new 256-bit encryption key
 func generateMasterKey() ([]byte, error) {
 	key := make([]byte, 32)
 	if _, err := rand.Read(key); err != nil {
 		return nil, fmt.Errorf("failed to generate random key: %v", err)
 	}
 
-	// Save key to file as hex string
 	keyHex := hex.EncodeToString(key)
 	if err := os.WriteFile(keyFile, []byte(keyHex), 0600); err != nil {
 		return nil, fmt.Errorf("failed to save key to file: %v", err)
@@ -120,7 +118,6 @@ func generateMasterKey() ([]byte, error) {
 func createKeyShares(keyHex string, totalShares, requiredShares int) ([]string, error) {
 	fmt.Printf("🔐 Creating %d key shares (threshold: %d)\n", totalShares, requiredShares)
 
-	// Convert hex string to bytes
 	keyBytes, err := hex.DecodeString(keyHex)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode key hex: %v", err)
@@ -141,22 +138,18 @@ func createKeyShares(keyHex string, totalShares, requiredShares int) ([]string, 
 }
 
 func loadConfig() {
-	// Read configuration from .env file
 	envVars := readEnvFile()
-	
+
 	keyDir = getConfigValue(envVars, "KEY_DIR", "/app/keys")
 	keyFilename := getConfigValue(envVars, "KEY_FILENAME", "master.key")
 	testFile = getConfigValue(envVars, "TEST_FILE", "/app/test_hello.encrypted")
-	
-	// Construct full key file path
+
 	keyFile = filepath.Join(keyDir, keyFilename)
 }
 
 func validateShamirConfig() (int, int, error) {
-	// Read configuration from .env file
 	envVars := readEnvFile()
-	
-	// Get values with defaults (fixed: now reads from .env)
+
 	totalShares := getConfigInt(envVars, "SHAMIR_TOTAL_SHARES", 3)
 	threshold := getConfigInt(envVars, "SHAMIR_THRESHOLD", 3)
 
@@ -173,38 +166,36 @@ func validateShamirConfig() (int, int, error) {
 	return totalShares, threshold, nil
 }
 
-// readEnvFile reads the .env file and returns a map of key-value pairs
 func readEnvFile() map[string]string {
 	envVars := make(map[string]string)
-	
+
 	envFile := "/app/.env"
 	file, err := os.Open(envFile)
 	if err != nil {
-		return envVars // Return empty map if file doesn't exist
+		return envVars
 	}
 	defer file.Close()
-	
+
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		
+
 		parts := strings.SplitN(line, "=", 2)
 		if len(parts) != 2 {
 			continue
 		}
-		
+
 		key := strings.TrimSpace(parts[0])
 		value := strings.TrimSpace(parts[1])
 		envVars[key] = value
 	}
-	
+
 	return envVars
 }
 
-// getConfigValue gets a string value from config with fallback
 func getConfigValue(envVars map[string]string, key, defaultValue string) string {
 	if value, exists := envVars[key]; exists && value != "" {
 		return value
@@ -212,7 +203,6 @@ func getConfigValue(envVars map[string]string, key, defaultValue string) string 
 	return defaultValue
 }
 
-// getConfigInt gets an integer value from config with fallback
 func getConfigInt(envVars map[string]string, key string, defaultValue int) int {
 	if value, exists := envVars[key]; exists && value != "" {
 		if intVal, err := strconv.Atoi(value); err == nil && intVal > 0 {
@@ -232,7 +222,6 @@ func displayKeyShares(shares []string, threshold int) {
 		shareNumber := i + 1
 		fmt.Printf("🔑 KEY SHARE #%d:\n", shareNumber)
 
-		// Create a box around the key with blue color
 		fmt.Println("   /" + strings.Repeat("-", len(share)+2) + "\\")
 		fmt.Printf("   | %s%s%s |\n", ColorBlue, share, ColorReset)
 		fmt.Println("   \\" + strings.Repeat("-", len(share)+2) + "/")
@@ -270,4 +259,3 @@ func saveKeyInfo(keyInfo KeyInfo) error {
 	fmt.Printf("💾 Key information saved to: %s\n", infoFile)
 	return nil
 }
-
