@@ -139,7 +139,50 @@ GCP_BUCKET_PREFIX=snapshots                        # Folder prefix in bucket
 ## Encryption Testing
 
 ### test_encryption/ Folder
-A standalone testing tool to verify your encryption strength:
-- **Manual Test**: Put your .encrypted files in the folder, run the program, enter your key shares to verify decryption works
-- **Brute Force Test**: Concurrent attack simulation that tries millions of random keys to prove your encryption is mathematically uncrackable
-- **Usage**: `cd test_encryption && go run main.go` - Interactive menu guides you through both test modes
+A standalone testing tool to verify your encryption strength and recover your snapshots:
+
+![Encryption Test Tool](images/tester.png)
+
+#### Manual Decryption Test (Option 1)
+1. Copy your `.encrypted` snapshot files to the `test_encryption/` folder
+2. Run `cd test_encryption && go run main.go`
+3. Choose **Option 1** - Manual decryption with your 3 key shares
+4. Enter the filename of your encrypted snapshot
+5. Enter your 3 key shares when prompted
+
+**Result**: The tool will:
+- Decrypt your snapshot using the 3 key shares
+- Save the decrypted data as `filename_decrypted.iso.gz`
+- Automatically decompress it to `filename_decrypted.iso`
+- Create a bootable ISO ready for use in VMs
+
+#### Accessing Your Backup Data
+Once decrypted, you can extract and browse your backup:
+
+```bash
+# Extract ISO contents (recommended for macOS)
+brew install p7zip
+7z x filename_decrypted.iso -o./extracted_backup/
+
+# Browse your backup files
+ls -la ./extracted_backup/
+
+# Check snapshot creation info
+cat ./extracted_backup/snapshot_info/disk_image_info.txt
+```
+
+The `disk_image_info.txt` file contains:
+- Exact timestamp when the snapshot was encrypted
+- Source filesystem information
+- Encryption method details
+- Recovery instructions
+
+#### Brute Force Security Test (Option 2)
+- **Concurrent Attack Simulation**: Tries millions of random key combinations
+- **Proves Uncrackability**: Demonstrates that your encryption is mathematically secure
+- **Performance Metrics**: Shows attack rate and estimated time to crack (infinity)
+
+#### Other Options
+- **Option 3**: Refresh file list to see available encrypted snapshots
+- **Option 4**: Test ISO contents and get mounting instructions
+- **Option 5**: Exit the tool

@@ -17,13 +17,13 @@ type CloudConfig struct {
 	BucketPrefix          string
 }
 
-func uploadToCloud(localPath, snapshotName string) {
+func uploadToCloud(localPath, diskImageName string) {
 	config := getCloudConfig()
 	if !config.Enabled {
 		return
 	}
 
-	logInfo("☁️ Uploading snapshot to Google Cloud Storage...")
+	logInfo("☁️ Uploading disk image to Google Cloud Storage...")
 
 	serviceAccountPath := "/app/keys/" + config.ServiceAccountKeyFile
 	if err := authenticateGCP(serviceAccountPath); err != nil {
@@ -31,9 +31,9 @@ func uploadToCloud(localPath, snapshotName string) {
 		return
 	}
 
-	relativePath := getRelativePathFromSnapshot(localPath)
+	relativePath := getRelativePathFromDiskImage(localPath)
 
-	cloudPath := buildCloudPath(config.BucketPrefix, relativePath, snapshotName+".encrypted")
+	cloudPath := buildCloudPath(config.BucketPrefix, relativePath, diskImageName+".encrypted")
 
 	cmd := exec.Command("/opt/google-cloud-sdk/bin/gsutil", "cp", localPath, fmt.Sprintf("gs://%s/%s", config.BucketName, cloudPath))
 
@@ -49,7 +49,7 @@ func uploadToCloud(localPath, snapshotName string) {
 func getCloudConfig() CloudConfig {
 	config := CloudConfig{
 		Enabled:      false,
-		BucketPrefix: "snapshots",
+		BucketPrefix: "disk_images",
 	}
 
 	envFile := "/app/.env"
@@ -107,9 +107,9 @@ func authenticateGCP(serviceAccountFile string) error {
 	return nil
 }
 
-func getRelativePathFromSnapshot(snapshotPath string) string {
+func getRelativePathFromDiskImage(diskImagePath string) string {
 
-	relativePath := strings.TrimPrefix(snapshotPath, snapshotDir+"/")
+	relativePath := strings.TrimPrefix(diskImagePath, diskImageDir+"/")
 
 	parts := strings.Split(relativePath, "/")
 	if len(parts) >= 4 {

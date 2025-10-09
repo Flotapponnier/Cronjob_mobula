@@ -33,7 +33,7 @@ FROM debian:bullseye
 ENV TZ=Europe/Paris
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
-# Update packages and install dependencies including Google Cloud SDK
+# Update packages and install dependencies including Google Cloud SDK and disk imaging tools
 RUN apt-get update && apt-get install -y \
     cron \
     rsync \
@@ -43,6 +43,11 @@ RUN apt-get update && apt-get install -y \
     curl \
     python3 \
     python3-pip \
+    e2fsprogs \
+    parted \
+    genisoimage \
+    isolinux \
+    syslinux-common \
     && rm -rf /var/lib/apt/lists/* \
     && update-ca-certificates
 
@@ -52,8 +57,8 @@ RUN curl -sSL https://sdk.cloud.google.com > /tmp/gcpsdk-install.sh && \
     rm /tmp/gcpsdk-install.sh
 ENV PATH="/opt/google-cloud-sdk/bin:$PATH"
 
-# Create snapshots and keys directories
-RUN mkdir -p /app/snapshots /app/keys
+# Create disk_images and keys directories
+RUN mkdir -p /app/disk_images /app/keys
 
 # Copy Go binaries from builder stage
 COPY --from=builder /build/script/snapshot /app/snapshot

@@ -12,8 +12,8 @@ import (
 )
 
 var (
-	snapshotDir string
-	keyFile     string
+	diskImageDir string
+	keyFile      string
 )
 
 func main() {
@@ -30,54 +30,47 @@ func main() {
 		return
 	}
 
-	snapshotPath, snapshotName, err := createArchitecturedSnapshot()
+	diskImagePath, diskImageName, err := createArchitecturedDiskImage()
 	if err != nil {
-		logError("Failed to create snapshot architecture: %v", err)
+		logError("Failed to create disk image path: %v", err)
 		return
 	}
 
-	logInfo("Starting encrypted snapshot %s", snapshotName)
+	logInfo("Starting encrypted OS disk image %s", diskImageName)
 
-	tempSnapshotPath := snapshotPath + "_temp"
-	if err := os.MkdirAll(tempSnapshotPath, 0755); err != nil {
-		logError("Failed to create temp snapshot path: %v", err)
+	isoPath := diskImagePath + ".iso.gz"
+	if err := createCompressedISO(isoPath); err != nil {
+		logError("Failed to create compressed ISO: %v", err)
 		return
 	}
 
-	backupPath := filepath.Join(tempSnapshotPath, "app_backup")
-	if err := copyFiles(backupPath); err != nil {
-		logError("Failed to copy files: %v", err)
+	encryptedDiskPath := diskImagePath + ".encrypted"
+	if err := encryptDiskImage(isoPath, encryptedDiskPath, masterKey); err != nil {
+		logError("Failed to encrypt ISO: %v", err)
 		return
 	}
 
-	if err := createMetadata(tempSnapshotPath); err != nil {
-		logError("Failed to create metadata: %v", err)
-		return
+	if err := os.Remove(isoPath); err != nil {
+		logError("Failed to remove ISO: %v", err)
 	}
 
-	encryptedPath := snapshotPath + ".encrypted"
-	if err := encryptSnapshot(tempSnapshotPath, encryptedPath, masterKey); err != nil {
-		logError("Failed to encrypt snapshot: %v", err)
-		return
-	}
-
-	if err := os.RemoveAll(tempSnapshotPath); err != nil {
-		logError("Failed to remove temp snapshot: %v", err)
-	}
-
-	logSectionStart("📊 Snapshot Organization Stats")
-	getSnapshotStatsContent()
+	logSectionStart("💽 Disk Image Stats")
+	getDiskImageStatsContent()
 	logSectionEnd()
 
 	checkRetentionPolicy()
 
-	uploadToCloud(encryptedPath, snapshotName)
+	uploadToCloud(encryptedDiskPath, diskImageName)
 
-	logInfo("Encrypted snapshot %s has been saved: %s", snapshotName, encryptedPath)
+	if err := updateSnapshotInfoFile(diskImageName, encryptedDiskPath); err != nil {
+		logError("Failed to update snapshot info file: %v", err)
+	}
+
+	logInfo("Encrypted disk image %s has been saved: %s", diskImageName, encryptedDiskPath)
 }
 
 func loadConfig() {
-	snapshotDir = "/app/snapshots"
+	diskImageDir = "/app/disk_images"
 	keyDir := "/app/keys"
 	keyFilename := "master.key"
 
@@ -106,9 +99,9 @@ func loadConfig() {
 		value := strings.TrimSpace(parts[1])
 
 		switch key {
-		case "SNAPSHOT_DIR":
+		case "DISK_IMAGE_DIR":
 			if value != "" {
-				snapshotDir = value
+				diskImageDir = value
 			}
 		case "KEY_DIR":
 			if value != "" {
@@ -124,26 +117,102 @@ func loadConfig() {
 	keyFile = filepath.Join(keyDir, keyFilename)
 }
 
-func copyFiles(backupPath string) error {
-	sourcePath := getSourcePath()
+func createCompressedISO(isoPath string) error {
+	logInfo("Creating compressed ISO from filesystem...")
 
-	if err := os.MkdirAll(backupPath, 0755); err != nil {
-		return fmt.Errorf("failed to create backup directory: %v", err)
+	tempISO := "/tmp/temp.iso"
+	tempDir := "/tmp/iso_content"
+	
+	// Create temp directory
+	if err := os.MkdirAll(tempDir, 0755); err != nil {
+		return err
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Copy filesystem to temp directory
+	cmd := exec.Command("rsync", "-aHAXx", 
+		"--exclude=/proc/*", "--exclude=/sys/*", "--exclude=/dev/*",
+		"--exclude=/tmp/*", "--exclude=/var/tmp/*", "--exclude=/run/*",
+		"--exclude=/mnt/*", "--exclude=/media/*", "--exclude=/lost+found",
+		"--exclude=/app/disk_images/*",
+		"/", tempDir+"/")
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to copy filesystem: %v", err)
 	}
 
-	cmd := exec.Command("rsync", "-a", "--exclude=snapshots", "--ignore-errors", sourcePath+"/", backupPath+"/")
+	// Create snapshot info file in the ISO
+	infoDir := filepath.Join(tempDir, "snapshot_info")
+	if err := os.MkdirAll(infoDir, 0755); err != nil {
+		return err
+	}
+	
+	infoFile := filepath.Join(infoDir, "disk_image_info.txt")
+	if file, err := os.Create(infoFile); err == nil {
+		fmt.Fprintf(file, "Last Snapshot Information\n")
+		fmt.Fprintf(file, "========================\n")
+		fmt.Fprintf(file, "Disk image created: %s\n", time.Now().Format(time.RFC3339))
+		fmt.Fprintf(file, "Source: Container OS filesystem\n")
+		fmt.Fprintf(file, "Type: Compressed ISO (gzip)\n")
+		fmt.Fprintf(file, "Encryption: AES-256-GCM with Shamir Secret Sharing\n")
+		fmt.Fprintf(file, "\nTo restore:\n")
+		fmt.Fprintf(file, "1. Decrypt with 3 key shares\n")
+		fmt.Fprintf(file, "2. Decompress with gunzip\n")
+		fmt.Fprintf(file, "3. Mount ISO or use in VM\n")
+		file.Close()
+	}
 
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		logError("Rsync failed with output: %s", string(output))
+	// Create bootloader directory structure
+	bootDir := filepath.Join(tempDir, "isolinux")
+	if err := os.MkdirAll(bootDir, 0755); err != nil {
 		return err
 	}
 
+	// Copy isolinux files for booting
+	cmd = exec.Command("cp", "/usr/lib/ISOLINUX/isolinux.bin", bootDir)
+	cmd.Run()
+	cmd = exec.Command("cp", "/usr/lib/syslinux/modules/bios/ldlinux.c32", bootDir)
+	cmd.Run()
+
+	// Create isolinux.cfg for boot menu
+	cfgContent := `DEFAULT linux
+LABEL linux
+  KERNEL /boot/vmlinuz
+  APPEND root=/dev/sr0 ro
+`
+	os.WriteFile(filepath.Join(bootDir, "isolinux.cfg"), []byte(cfgContent), 0644)
+
+	// Create ISO with better compatibility
+	cmd = exec.Command("genisoimage", "-o", tempISO, "-R", "-J", "-joliet-long", tempDir)
+	if err := cmd.Run(); err != nil {
+		// Fallback to simple format
+		cmd = exec.Command("genisoimage", "-o", tempISO, "-R", tempDir)
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("failed to create ISO: %v", err)
+		}
+	}
+
+	// Compress ISO
+	cmd = exec.Command("gzip", "-c", tempISO)
+	outFile, err := os.Create(isoPath)
+	if err != nil {
+		return err
+	}
+	defer outFile.Close()
+	
+	cmd.Stdout = outFile
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to compress ISO: %v", err)
+	}
+
+	os.Remove(tempISO)
+	logInfo("Compressed ISO created successfully")
 	return nil
 }
 
-func createMetadata(snapshotPath string) error {
-	metadataPath := filepath.Join(snapshotPath, "metadata.txt")
+
+
+func createMetadata(metadataPath string) error {
 	file, err := os.Create(metadataPath)
 	if err != nil {
 		return err
@@ -152,7 +221,7 @@ func createMetadata(snapshotPath string) error {
 
 	hostname, _ := os.Hostname()
 
-	fmt.Fprintf(file, "Snapshot created on: %s\n", time.Now().Format(time.RFC3339))
+	fmt.Fprintf(file, "Disk image created on: %s\n", time.Now().Format(time.RFC3339))
 	fmt.Fprintf(file, "Hostname: %s\n", hostname)
 
 	if uptimeBytes, err := os.ReadFile("/proc/uptime"); err == nil {
@@ -162,39 +231,6 @@ func createMetadata(snapshotPath string) error {
 	return nil
 }
 
-func getSourcePath() string {
-	defaultPath := "/app"
-
-	envFile := "/app/.env"
-	file, err := os.Open(envFile)
-	if err != nil {
-		return defaultPath
-	}
-	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-
-		parts := strings.SplitN(line, "=", 2)
-		if len(parts) != 2 {
-			continue
-		}
-
-		key := strings.TrimSpace(parts[0])
-		value := strings.TrimSpace(parts[1])
-
-		if key == "SNAPSHOT_SOURCE_PATH" && value != "" {
-			return value
-		}
-	}
-
-	return defaultPath
-}
-
 func checkRetentionPolicy() {
 	retentionDays := getRetentionDays()
 	if retentionDays <= 0 {
@@ -202,12 +238,12 @@ func checkRetentionPolicy() {
 	}
 
 	cutoffTime := time.Now().AddDate(0, 0, -retentionDays)
-	logInfo("🗑️ Checking retention policy: removing snapshots older than %d days", retentionDays)
+	logInfo("🗑️ Checking retention policy: removing disk images older than %d days", retentionDays)
 
 	removed := 0
 	totalSize := int64(0)
 
-	err := filepath.Walk(snapshotDir, func(path string, info os.FileInfo, err error) error {
+	err := filepath.Walk(diskImageDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil
 		}
@@ -216,10 +252,10 @@ func checkRetentionPolicy() {
 			if info.ModTime().Before(cutoffTime) {
 				totalSize += info.Size()
 				if err := os.Remove(path); err != nil {
-					logError("Failed to remove old snapshot %s: %v", path, err)
+					logError("Failed to remove old disk image %s: %v", path, err)
 				} else {
 					removed++
-					logInfo("🗑️ Removed old snapshot: %s", filepath.Base(path))
+					logInfo("🗑️ Removed old disk image: %s", filepath.Base(path))
 				}
 			}
 		}
@@ -233,9 +269,9 @@ func checkRetentionPolicy() {
 	}
 
 	if removed > 0 {
-		logInfo("✅ Retention cleanup complete: removed %d snapshots (%.2f MB freed)", removed, float64(totalSize)/1024/1024)
+		logInfo("✅ Retention cleanup complete: removed %d disk images (%.2f MB freed)", removed, float64(totalSize)/1024/1024)
 
-		removeEmptyDirs(snapshotDir)
+		removeEmptyDirs(diskImageDir)
 	}
 }
 
@@ -288,4 +324,51 @@ func removeEmptyDirs(root string) {
 
 		return nil
 	})
+}
+
+func encryptDiskImage(diskPath, encryptedPath string, key []byte) error {
+	logInfo("Encrypting disk image...")
+
+	if err := encryptFile(diskPath, encryptedPath, key); err != nil {
+		return fmt.Errorf("failed to encrypt disk image: %v", err)
+	}
+
+	logInfo("Disk image encrypted successfully")
+	return nil
+}
+
+func updateSnapshotInfoFile(diskImageName, encryptedDiskPath string) error {
+	infoFilePath := "/app/last_snapshot_info.txt"
+	
+	file, err := os.Create(infoFilePath)
+	if err != nil {
+		return fmt.Errorf("failed to create snapshot info file: %v", err)
+	}
+	defer file.Close()
+
+	now := time.Now()
+	hostname, _ := os.Hostname()
+
+	// Get file size
+	info, err := os.Stat(encryptedDiskPath)
+	var fileSize int64 = 0
+	if err == nil {
+		fileSize = info.Size()
+	}
+
+	fmt.Fprintf(file, "Last Snapshot Information\n")
+	fmt.Fprintf(file, "========================\n\n")
+	fmt.Fprintf(file, "Snapshot Name: %s\n", diskImageName)
+	fmt.Fprintf(file, "Creation Date: %s\n", now.Format("2006-01-02"))
+	fmt.Fprintf(file, "Creation Time: %s\n", now.Format("15:04:05"))
+	fmt.Fprintf(file, "Full Timestamp: %s\n", now.Format(time.RFC3339))
+	fmt.Fprintf(file, "Hostname: %s\n", hostname)
+	fmt.Fprintf(file, "File Path: %s\n", encryptedDiskPath)
+	fmt.Fprintf(file, "File Size: %.2f MB\n", float64(fileSize)/1024/1024)
+	fmt.Fprintf(file, "Encryption: AES-256-GCM\n")
+	fmt.Fprintf(file, "\nSnapshot Type: Full OS Disk Image\n")
+	fmt.Fprintf(file, "Next Snapshot: %s (estimated)\n", now.Add(time.Minute).Format("15:04:05"))
+
+	logInfo("Updated snapshot info file: %s", infoFilePath)
+	return nil
 }

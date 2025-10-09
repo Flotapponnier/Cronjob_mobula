@@ -2,11 +2,13 @@ package main
 
 import (
 	"bufio"
+	"compress/gzip"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -42,8 +44,9 @@ func main() {
 		fmt.Println("1. 🔑 Manual decryption with your 3 key shares")
 		fmt.Println("2. 🤖 Concurrent brute force test (verify encryption strength)")
 		fmt.Println("3. 📂 Refresh file list")
-		fmt.Println("4. ❌ Exit")
-		fmt.Print("\nEnter choice (1-4): ")
+		fmt.Println("4. 💿 Test ISO contents (mount and browse)")
+		fmt.Println("5. ❌ Exit")
+		fmt.Print("\nEnter choice (1-5): ")
 
 		choice := getUserInput()
 
@@ -55,10 +58,12 @@ func main() {
 		case "3":
 			showEncryptedFiles()
 		case "4":
+			testISOContents()
+		case "5":
 			fmt.Printf("%s👋 Goodbye!%s\n", ColorGreen, ColorReset)
 			return
 		default:
-			fmt.Printf("%s❌ Invalid choice. Please enter 1, 2, 3, or 4.%s\n", ColorRed, ColorReset)
+			fmt.Printf("%s❌ Invalid choice. Please enter 1, 2, 3, 4, or 5.%s\n", ColorRed, ColorReset)
 		}
 	}
 }
@@ -131,8 +136,8 @@ func manualDecryption() {
 	// Attempt decryption
 	fmt.Printf("\n%s🔐 Attempting decryption...%s\n", ColorBlue, ColorReset)
 
-	if decryptFile(filename, shares) {
-		fmt.Printf("%s✅ SUCCESS! File decrypted successfully%s\n", ColorGreen, ColorReset)
+	if decryptAndDecompressFile(filename, shares) {
+		fmt.Printf("%s✅ SUCCESS! File decrypted and decompressed to ISO%s\n", ColorGreen, ColorReset)
 	} else {
 		fmt.Printf("%s❌ FAILED! Could not decrypt file%s\n", ColorRed, ColorReset)
 	}
@@ -319,6 +324,150 @@ func decryptFile(filename string, shares []string) bool {
 
 	_, err = gcm.Open(nil, nonce, encrypted, nil)
 	return err == nil // Success if no error
+}
+
+func decryptAndDecompressFile(filename string, shares []string) bool {
+	// Convert hex shares to bytes
+	shareBytes := make([][]byte, len(shares))
+	for i, share := range shares {
+		bytes, err := hex.DecodeString(share)
+		if err != nil {
+			return false // Invalid hex
+		}
+		shareBytes[i] = bytes
+	}
+
+	// Try to reconstruct master key
+	masterKey, err := shamir.Combine(shareBytes)
+	if err != nil {
+		return false // Invalid shares
+	}
+
+	// Try to decrypt file
+	ciphertext, err := os.ReadFile(filename)
+	if err != nil {
+		return false
+	}
+
+	// Create cipher
+	block, err := aes.NewCipher(masterKey)
+	if err != nil {
+		return false
+	}
+
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return false
+	}
+
+	// Check file size
+	if len(ciphertext) < gcm.NonceSize() {
+		return false
+	}
+
+	// Extract nonce and try to decrypt
+	nonce := ciphertext[:gcm.NonceSize()]
+	encrypted := ciphertext[gcm.NonceSize():]
+
+	decryptedData, err := gcm.Open(nil, nonce, encrypted, nil)
+	if err != nil {
+		return false // Decryption failed
+	}
+
+	// Save decrypted compressed file
+	gzFile := strings.TrimSuffix(filename, ".encrypted") + "_decrypted.iso.gz"
+	if err := os.WriteFile(gzFile, decryptedData, 0600); err != nil {
+		fmt.Printf("%s❌ Failed to save decrypted file: %v%s\n", ColorRed, err, ColorReset)
+		return false
+	}
+	fmt.Printf("%s📁 Saved decrypted file: %s%s\n", ColorGreen, gzFile, ColorReset)
+
+	// Decompress to ISO
+	isoFile := strings.TrimSuffix(gzFile, ".gz")
+	fmt.Printf("🗜️ Decompressing to ISO...\n")
+	if err := decompressGzip(gzFile, isoFile); err != nil {
+		fmt.Printf("%s❌ Decompression failed: %v%s\n", ColorRed, err, ColorReset)
+		return false
+	}
+
+	// Show file info
+	if stat, err := os.Stat(isoFile); err == nil {
+		fmt.Printf("%s💽 Final ISO: %s (%.2f MB)%s\n", ColorGreen, isoFile, float64(stat.Size())/1024/1024, ColorReset)
+		fmt.Printf("%s🎉 Ready to boot in VM!%s\n", ColorGreen, ColorReset)
+	}
+
+	return true
+}
+
+func decompressGzip(gzipFile, outputFile string) error {
+	file, err := os.Open(gzipFile)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	reader, err := gzip.NewReader(file)
+	if err != nil {
+		return err
+	}
+	defer reader.Close()
+
+	output, err := os.Create(outputFile)
+	if err != nil {
+		return err
+	}
+	defer output.Close()
+
+	_, err = io.Copy(output, reader)
+	return err
+}
+
+func testISOContents() {
+	fmt.Printf("\n%s💿 ISO Contents Test%s\n", ColorPurple, ColorReset)
+	fmt.Println("=" + strings.Repeat("=", 20))
+
+	// Look for ISO files
+	fmt.Println("Looking for .iso files...")
+	err := filepath.WalkDir(".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if !d.IsDir() && strings.HasSuffix(strings.ToLower(d.Name()), ".iso") {
+			info, err := d.Info()
+			if err != nil {
+				return nil
+			}
+			fmt.Printf("%s📀 Found ISO: %s (%.2f MB)%s\n", 
+				ColorGreen, d.Name(), float64(info.Size())/1024/1024, ColorReset)
+		}
+		return nil
+	})
+
+	if err != nil {
+		fmt.Printf("%s❌ Error scanning: %v%s\n", ColorRed, err, ColorReset)
+		return
+	}
+
+	fmt.Print("\nEnter ISO filename to examine: ")
+	filename := strings.TrimSpace(getUserInput())
+
+	if filename == "" {
+		fmt.Printf("%s❌ No filename provided%s\n", ColorRed, ColorReset)
+		return
+	}
+
+	if _, err := os.Stat(filename); os.IsNotExist(err) {
+		fmt.Printf("%s❌ File '%s' not found%s\n", ColorRed, filename, ColorReset)
+		return
+	}
+
+	fmt.Printf("%s🔍 Instructions to examine ISO:%s\n", ColorBlue, ColorReset)
+	fmt.Printf("1. Copy ISO to your Mac: %s\n", filename)
+	fmt.Printf("2. Double-click it in Finder to mount\n")
+	fmt.Printf("3. Browse /Volumes/mounted_volume to see your backup files\n")
+	fmt.Printf("4. Check for /etc, /var, /usr directories to verify it's your system\n")
+	fmt.Println()
+	fmt.Printf("%s💡 Tip: Look for /app/keys/ to verify it's your container backup%s\n", ColorYellow, ColorReset)
 }
 
 func getUserInput() string {

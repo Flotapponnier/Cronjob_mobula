@@ -4,10 +4,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
-func createArchitecturedSnapshot() (string, string, error) {
+func createArchitecturedDiskImage() (string, string, error) {
 	now := time.Now()
 
 	year := fmt.Sprintf("%04d", now.Year())
@@ -15,35 +16,35 @@ func createArchitecturedSnapshot() (string, string, error) {
 	month := fmt.Sprintf("%02d", int(now.Month()))
 	hour := fmt.Sprintf("%02d", now.Hour())
 
-	snapshotDirPath := filepath.Join(snapshotDir, year, day, month, hour)
-	if err := os.MkdirAll(snapshotDirPath, 0755); err != nil {
-		return "", "", fmt.Errorf("failed to create snapshot directory structure: %v", err)
+	diskImageDirPath := filepath.Join(diskImageDir, year, day, month, hour)
+	if err := os.MkdirAll(diskImageDirPath, 0755); err != nil {
+		return "", "", fmt.Errorf("failed to create disk image directory structure: %v", err)
 	}
 
 	timestamp := now.Format("02012006_1504")
-	snapshotName := fmt.Sprintf("snapshot_%s", timestamp)
-	snapshotPath := filepath.Join(snapshotDirPath, snapshotName)
+	diskImageName := fmt.Sprintf("disk_image_%s", timestamp)
+	diskImagePath := filepath.Join(diskImageDirPath, diskImageName)
 
-	logInfo("Created snapshot directory structure: %s", snapshotDirPath)
-	logInfo("Snapshot will be saved as: %s", snapshotName)
+	logInfo("Created disk image directory structure: %s", diskImageDirPath)
+	logInfo("Disk image will be saved as: %s", diskImageName)
 
-	return snapshotPath, snapshotName, nil
+	return diskImagePath, diskImageName, nil
 }
 
-func getSnapshotStatsContent() {
+func getDiskImageStatsContent() {
 	yearFolders := 0
 	dayFolders := 0
 	hourFolders := 0
-	totalSnapshots := 0
+	totalDiskImages := 0
 
-	err := filepath.Walk(snapshotDir, func(path string, info os.FileInfo, err error) error {
+	err := filepath.Walk(diskImageDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil
 		}
 
-		if info.IsDir() && path != snapshotDir {
-			relPath, _ := filepath.Rel(snapshotDir, path)
-			pathParts := filepath.SplitList(filepath.ToSlash(relPath))
+		if info.IsDir() && path != diskImageDir {
+			relPath, _ := filepath.Rel(diskImageDir, path)
+			pathParts := strings.Split(filepath.ToSlash(relPath), "/")
 
 			switch len(pathParts) {
 			case 1:
@@ -54,8 +55,8 @@ func getSnapshotStatsContent() {
 			case 4:
 				hourFolders++
 			}
-		} else if !info.IsDir() && filepath.Ext(info.Name()) == ".encrypted" {
-			totalSnapshots++
+		} else if !info.IsDir() && strings.HasSuffix(info.Name(), ".encrypted") {
+			totalDiskImages++
 		}
 
 		return nil
@@ -66,8 +67,8 @@ func getSnapshotStatsContent() {
 		return
 	}
 
-	logInfo("📅 Years with snapshots: %d", yearFolders)
-	logInfo("📁 Days with snapshots: %d", dayFolders)
+	logInfo("📅 Years with disk images: %d", yearFolders)
+	logInfo("📁 Days with disk images: %d", dayFolders)
 	logInfo("⏰ Hour folders: %d", hourFolders)
-	logInfo("📸 Total encrypted snapshots: %d", totalSnapshots)
+	logInfo("💽 Total encrypted disk images: %d", totalDiskImages)
 }

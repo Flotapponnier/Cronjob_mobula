@@ -17,7 +17,7 @@ up: build
 		docker start $(CONTAINER_NAME); \
 	else \
 		echo "Creating new container..."; \
-		docker run -d --name $(CONTAINER_NAME) $(IMAGE_NAME); \
+		docker run -d --privileged --memory=16g --name $(CONTAINER_NAME) $(IMAGE_NAME); \
 	fi
 	@echo "Container started. Use 'make logs' to view output."
 
