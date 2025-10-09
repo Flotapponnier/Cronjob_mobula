@@ -69,10 +69,53 @@ func main() {
 	logInfo("Encrypted disk image %s has been saved: %s", diskImageName, encryptedDiskPath)
 }
 
+var (
+	// System paths
+	tempMountPoint    string
+	tempBootMount     string
+	tempISODir        string
+	tempISOFile       string
+	infoFileName      string
+	snapshotInfoDir   string
+	diskImageInfoFile string
+	
+	// System tools
+	mkfsExt4Path     string
+	genisoimagePath  string
+	isolinuxLibPath  string
+	syslinuxLibPath  string
+	
+	// Exclusions
+	excludePatterns  []string
+)
+
 func loadConfig() {
 	diskImageDir = "/app/disk_images"
 	keyDir := "/app/keys"
 	keyFilename := "master.key"
+	
+	// Default system paths
+	tempMountPoint = "/tmp/disk_mount"
+	tempBootMount = "/tmp/boot_mount"
+	tempISODir = "/tmp/iso_content"
+	tempISOFile = "/tmp/temp.iso"
+	infoFileName = "last_snapshot_info.txt"
+	snapshotInfoDir = "snapshot_info"
+	diskImageInfoFile = "disk_image_info.txt"
+	
+	// Default system tools
+	mkfsExt4Path = "/sbin/mkfs.ext4"
+	genisoimagePath = "genisoimage"
+	isolinuxLibPath = "/usr/lib/ISOLINUX"
+	syslinuxLibPath = "/usr/lib/syslinux/modules/bios"
+	
+	// Default exclusions
+	excludePatterns = []string{
+		"--exclude=/proc/*", "--exclude=/sys/*", "--exclude=/dev/*",
+		"--exclude=/tmp/*", "--exclude=/var/tmp/*", "--exclude=/run/*",
+		"--exclude=/mnt/*", "--exclude=/media/*", "--exclude=/lost+found",
+		"--exclude=/app/disk_images/*",
+	}
 
 	envFile := "/app/.env"
 	file, err := os.Open(envFile)
@@ -100,16 +143,40 @@ func loadConfig() {
 
 		switch key {
 		case "DISK_IMAGE_DIR":
-			if value != "" {
-				diskImageDir = value
-			}
+			if value != "" { diskImageDir = value }
 		case "KEY_DIR":
-			if value != "" {
-				keyDir = value
-			}
+			if value != "" { keyDir = value }
 		case "KEY_FILENAME":
+			if value != "" { keyFilename = value }
+		// System paths
+		case "TEMP_MOUNT_POINT":
+			if value != "" { tempMountPoint = value }
+		case "TEMP_BOOT_MOUNT":
+			if value != "" { tempBootMount = value }
+		case "TEMP_ISO_DIR":
+			if value != "" { tempISODir = value }
+		case "TEMP_ISO_FILE":
+			if value != "" { tempISOFile = value }
+		case "INFO_FILE_NAME":
+			if value != "" { infoFileName = value }
+		case "SNAPSHOT_INFO_DIR":
+			if value != "" { snapshotInfoDir = value }
+		case "DISK_IMAGE_INFO_FILE":
+			if value != "" { diskImageInfoFile = value }
+		// System tools
+		case "MKFS_EXT4_PATH":
+			if value != "" { mkfsExt4Path = value }
+		case "GENISOIMAGE_PATH":
+			if value != "" { genisoimagePath = value }
+		case "ISOLINUX_LIB_PATH":
+			if value != "" { isolinuxLibPath = value }
+		case "SYSLINUX_LIB_PATH":
+			if value != "" { syslinuxLibPath = value }
+		// Exclusions (rebuild the array if any exclusion is set)
+		case "EXCLUDE_PROC", "EXCLUDE_SYS", "EXCLUDE_DEV", "EXCLUDE_TMP", 
+			 "EXCLUDE_VAR_TMP", "EXCLUDE_RUN", "EXCLUDE_MNT", "EXCLUDE_MEDIA", "EXCLUDE_LOST_FOUND":
 			if value != "" {
-				keyFilename = value
+				updateExclusionPattern(key, value)
 			}
 		}
 	}
@@ -117,37 +184,44 @@ func loadConfig() {
 	keyFile = filepath.Join(keyDir, keyFilename)
 }
 
+func updateExclusionPattern(key, value string) {
+	// Find and update the specific exclusion pattern
+	exclusionMap := map[string]int{
+		"EXCLUDE_PROC": 0, "EXCLUDE_SYS": 1, "EXCLUDE_DEV": 2,
+		"EXCLUDE_TMP": 3, "EXCLUDE_VAR_TMP": 4, "EXCLUDE_RUN": 5,
+		"EXCLUDE_MNT": 6, "EXCLUDE_MEDIA": 7, "EXCLUDE_LOST_FOUND": 8,
+	}
+	
+	if idx, exists := exclusionMap[key]; exists && idx < len(excludePatterns) {
+		excludePatterns[idx] = "--exclude=" + value
+	}
+}
+
 func createCompressedISO(isoPath string) error {
 	logInfo("Creating compressed ISO from filesystem...")
 
-	tempISO := "/tmp/temp.iso"
-	tempDir := "/tmp/iso_content"
-	
 	// Create temp directory
-	if err := os.MkdirAll(tempDir, 0755); err != nil {
+	if err := os.MkdirAll(tempISODir, 0755); err != nil {
 		return err
 	}
-	defer os.RemoveAll(tempDir)
+	defer os.RemoveAll(tempISODir)
 
-	// Copy filesystem to temp directory
-	cmd := exec.Command("rsync", "-aHAXx", 
-		"--exclude=/proc/*", "--exclude=/sys/*", "--exclude=/dev/*",
-		"--exclude=/tmp/*", "--exclude=/var/tmp/*", "--exclude=/run/*",
-		"--exclude=/mnt/*", "--exclude=/media/*", "--exclude=/lost+found",
-		"--exclude=/app/disk_images/*",
-		"/", tempDir+"/")
+	// Copy filesystem to temp directory using configured exclusions
+	args := append([]string{"rsync", "-aHAXx"}, excludePatterns...)
+	args = append(args, "/", tempISODir+"/")
+	cmd := exec.Command(args[0], args[1:]...)
 
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to copy filesystem: %v", err)
 	}
 
 	// Create snapshot info file in the ISO
-	infoDir := filepath.Join(tempDir, "snapshot_info")
+	infoDir := filepath.Join(tempISODir, snapshotInfoDir)
 	if err := os.MkdirAll(infoDir, 0755); err != nil {
 		return err
 	}
 	
-	infoFile := filepath.Join(infoDir, "disk_image_info.txt")
+	infoFile := filepath.Join(infoDir, diskImageInfoFile)
 	if file, err := os.Create(infoFile); err == nil {
 		fmt.Fprintf(file, "Last Snapshot Information\n")
 		fmt.Fprintf(file, "========================\n")
@@ -163,15 +237,15 @@ func createCompressedISO(isoPath string) error {
 	}
 
 	// Create bootloader directory structure
-	bootDir := filepath.Join(tempDir, "isolinux")
+	bootDir := filepath.Join(tempISODir, "isolinux")
 	if err := os.MkdirAll(bootDir, 0755); err != nil {
 		return err
 	}
 
-	// Copy isolinux files for booting
-	cmd = exec.Command("cp", "/usr/lib/ISOLINUX/isolinux.bin", bootDir)
+	// Copy isolinux files for booting using configured paths
+	cmd = exec.Command("cp", filepath.Join(isolinuxLibPath, "isolinux.bin"), bootDir)
 	cmd.Run()
-	cmd = exec.Command("cp", "/usr/lib/syslinux/modules/bios/ldlinux.c32", bootDir)
+	cmd = exec.Command("cp", filepath.Join(syslinuxLibPath, "ldlinux.c32"), bootDir)
 	cmd.Run()
 
 	// Create isolinux.cfg for boot menu
@@ -182,18 +256,18 @@ LABEL linux
 `
 	os.WriteFile(filepath.Join(bootDir, "isolinux.cfg"), []byte(cfgContent), 0644)
 
-	// Create ISO with better compatibility
-	cmd = exec.Command("genisoimage", "-o", tempISO, "-R", "-J", "-joliet-long", tempDir)
+	// Create ISO with better compatibility using configured tool
+	cmd = exec.Command(genisoimagePath, "-o", tempISOFile, "-R", "-J", "-joliet-long", tempISODir)
 	if err := cmd.Run(); err != nil {
 		// Fallback to simple format
-		cmd = exec.Command("genisoimage", "-o", tempISO, "-R", tempDir)
+		cmd = exec.Command(genisoimagePath, "-o", tempISOFile, "-R", tempISODir)
 		if err := cmd.Run(); err != nil {
 			return fmt.Errorf("failed to create ISO: %v", err)
 		}
 	}
 
 	// Compress ISO
-	cmd = exec.Command("gzip", "-c", tempISO)
+	cmd = exec.Command("gzip", "-c", tempISOFile)
 	outFile, err := os.Create(isoPath)
 	if err != nil {
 		return err
@@ -205,7 +279,7 @@ LABEL linux
 		return fmt.Errorf("failed to compress ISO: %v", err)
 	}
 
-	os.Remove(tempISO)
+	os.Remove(tempISOFile)
 	logInfo("Compressed ISO created successfully")
 	return nil
 }
@@ -338,7 +412,7 @@ func encryptDiskImage(diskPath, encryptedPath string, key []byte) error {
 }
 
 func updateSnapshotInfoFile(diskImageName, encryptedDiskPath string) error {
-	infoFilePath := "/app/last_snapshot_info.txt"
+	infoFilePath := "/app/" + infoFileName
 	
 	file, err := os.Create(infoFilePath)
 	if err != nil {
