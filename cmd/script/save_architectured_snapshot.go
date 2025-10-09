@@ -8,8 +8,15 @@ import (
 	"time"
 )
 
+const (
+	diskImageBaseName = "disk_image"
+)
+
 func createArchitecturedDiskImage() (string, string, error) {
-	now := time.Now()
+	return createArchitecturedDiskImageWithTime(time.Now())
+}
+
+func createArchitecturedDiskImageWithTime(now time.Time) (string, string, error) {
 
 	year := fmt.Sprintf("%04d", now.Year())
 	day := fmt.Sprintf("%02d", now.Day())
@@ -22,7 +29,7 @@ func createArchitecturedDiskImage() (string, string, error) {
 	}
 
 	timestamp := now.Format("02012006_1504")
-	diskImageName := fmt.Sprintf("disk_image_%s", timestamp)
+	diskImageName := fmt.Sprintf("%s_%s", diskImageBaseName, timestamp)
 	diskImagePath := filepath.Join(diskImageDirPath, diskImageName)
 
 	logInfo("Created disk image directory structure: %s", diskImageDirPath)

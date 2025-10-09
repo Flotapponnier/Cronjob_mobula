@@ -9,6 +9,7 @@ import (
 	"strings"
 )
 
+// CloudConfig holds Google Cloud Storage configuration
 type CloudConfig struct {
 	Enabled               bool
 	ProjectID             string
@@ -16,6 +17,13 @@ type CloudConfig struct {
 	ServiceAccountKeyFile string
 	BucketPrefix          string
 }
+
+// Constants for cloud upload
+const (
+	defaultGCPEnabled            = false
+	defaultServiceAccountFile   = "mobulacronjson.json"
+	defaultBucketPrefix         = "snapshots"
+)
 
 func uploadToCloud(localPath, diskImageName string) {
 	config := getCloudConfig()

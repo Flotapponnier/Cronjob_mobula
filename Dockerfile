@@ -7,7 +7,7 @@ WORKDIR /build
 COPY cmd/script/ ./script/
 WORKDIR /build/script
 RUN go mod tidy && go mod download
-RUN go build -o snapshot snapshot.go logger.go encryption_snapshot.go save_architectured_snapshot.go upload_cloud.go
+RUN go build -o snapshot snapshot.go logger.go encryption_snapshot.go save_architectured_snapshot.go upload_cloud.go retention_cleanup.go
 
 # Build key generation program  
 WORKDIR /build

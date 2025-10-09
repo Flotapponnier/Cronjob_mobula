@@ -15,6 +15,7 @@ import (
 	"github.com/hashicorp/vault/shamir"
 )
 
+// ANSI color codes for terminal output
 const (
 	ColorReset  = "\033[0m"
 	ColorBlue   = "\033[34m"
@@ -23,18 +24,29 @@ const (
 	ColorRed    = "\033[31m"
 )
 
-var (
-	keyFile  string
-	keyDir   string
-	testFile string
+// Constants for key generation
+const (
+	keyLengthBytes        = 32  // AES-256 key length
+	defaultTotalShares    = 3   // Default number of Shamir shares
+	defaultThreshold      = 3   // Default minimum shares needed
+	defaultKeyFilename    = "master.key"
+	defaultInfoFilename   = "key_info.json"
+	defaultTestFilename   = "test_hello.encrypted"
 )
 
+// KeyInfo stores metadata about generated keys
 type KeyInfo struct {
 	MasterKeyHex   string    `json:"master_key_hex"`
 	GeneratedAt    time.Time `json:"generated_at"`
 	TotalShares    int       `json:"total_shares"`
 	RequiredShares int       `json:"required_shares"`
 }
+
+var (
+	keyFile  string
+	keyDir   string
+	testFile string
+)
 
 func main() {
 	fmt.Println("🔐 Encryption Key Generator")
