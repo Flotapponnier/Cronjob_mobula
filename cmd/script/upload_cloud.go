@@ -2,27 +2,35 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
-// CloudConfig holds Google Cloud Storage configuration
+// CloudConfig holds S3 Object Storage configuration
 type CloudConfig struct {
-	Enabled               bool
-	ProjectID             string
-	BucketName            string
-	ServiceAccountKeyFile string
-	BucketPrefix          string
+	Enabled         bool
+	Endpoint        string
+	Region          string
+	AccessKeyID     string
+	SecretAccessKey string
+	BucketName      string
+	BucketPrefix    string
 }
 
 // Constants for cloud upload
 const (
-	defaultGCPEnabled            = false
-	defaultServiceAccountFile   = "mobulacronjson.json"
-	defaultBucketPrefix         = "snapshots"
+	defaultS3Enabled     = false
+	defaultBucketPrefix  = "backups"
+	defaultS3Endpoint    = "https://s3.gra.io.cloud.ovh.net"
+	defaultS3Region      = "gra"
 )
 
 func uploadToCloud(localPath, diskImageName string) {
@@ -31,33 +39,22 @@ func uploadToCloud(localPath, diskImageName string) {
 		return
 	}
 
-	logInfo("☁️ Uploading disk image to Google Cloud Storage...")
+	logInfo("☁️ Uploading disk image to OVH S3 Object Storage...")
 
-	serviceAccountPath := "/app/keys/" + config.ServiceAccountKeyFile
-	if err := authenticateGCP(serviceAccountPath); err != nil {
-		logError("Failed to authenticate with GCP: %v", err)
+	if err := uploadToS3(config, localPath, diskImageName); err != nil {
+		logError("Failed to upload to S3: %v", err)
 		return
 	}
 
-	relativePath := getRelativePathFromDiskImage(localPath)
-
-	cloudPath := buildCloudPath(config.BucketPrefix, relativePath, diskImageName+".encrypted")
-
-	cmd := exec.Command("/opt/google-cloud-sdk/bin/gsutil", "cp", localPath, fmt.Sprintf("gs://%s/%s", config.BucketName, cloudPath))
-
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		logError("Failed to upload to cloud: %v - Output: %s", err, string(output))
-		return
-	}
-
-	logInfo("✅ Successfully uploaded to cloud: gs://%s/%s", config.BucketName, cloudPath)
+	logInfo("✅ Successfully uploaded to S3: s3://%s/%s", config.BucketName, buildS3Key(config.BucketPrefix, localPath, diskImageName))
 }
 
 func getCloudConfig() CloudConfig {
 	config := CloudConfig{
-		Enabled:      false,
-		BucketPrefix: "disk_images",
+		Enabled:      defaultS3Enabled,
+		BucketPrefix: defaultBucketPrefix,
+		Endpoint:     defaultS3Endpoint,
+		Region:       defaultS3Region,
 	}
 
 	envFile := "/app/.env"
@@ -83,15 +80,23 @@ func getCloudConfig() CloudConfig {
 		value := strings.TrimSpace(parts[1])
 
 		switch key {
-		case "GCP_ENABLED":
+		case "S3_ENABLED":
 			config.Enabled = strings.ToLower(value) == "true"
-		case "GCP_PROJECT_ID":
-			config.ProjectID = value
-		case "GCP_BUCKET_NAME":
+		case "S3_ENDPOINT":
+			if value != "" {
+				config.Endpoint = value
+			}
+		case "S3_REGION":
+			if value != "" {
+				config.Region = value
+			}
+		case "S3_ACCESS_KEY_ID":
+			config.AccessKeyID = value
+		case "S3_SECRET_ACCESS_KEY":
+			config.SecretAccessKey = value
+		case "S3_BUCKET_NAME":
 			config.BucketName = value
-		case "GCP_SERVICE_ACCOUNT_KEY_FILE":
-			config.ServiceAccountKeyFile = value
-		case "GCP_BUCKET_PREFIX":
+		case "S3_BUCKET_PREFIX":
 			if value != "" {
 				config.BucketPrefix = value
 			}
@@ -101,35 +106,90 @@ func getCloudConfig() CloudConfig {
 	return config
 }
 
-func authenticateGCP(serviceAccountFile string) error {
-	if _, err := os.Stat(serviceAccountFile); os.IsNotExist(err) {
-		return fmt.Errorf("service account file not found: %s", serviceAccountFile)
+func uploadToS3(cfg CloudConfig, localPath, diskImageName string) error {
+	// Validate configuration
+	if cfg.AccessKeyID == "" || cfg.SecretAccessKey == "" {
+		return fmt.Errorf("S3 credentials are not configured")
+	}
+	if cfg.BucketName == "" {
+		return fmt.Errorf("S3 bucket name is not configured")
 	}
 
-	cmd := exec.Command("/opt/google-cloud-sdk/bin/gcloud", "auth", "activate-service-account", "--key-file", serviceAccountFile)
-	output, err := cmd.CombinedOutput()
+	// Open the file to upload
+	file, err := os.Open(localPath)
 	if err != nil {
-		return fmt.Errorf("failed to authenticate: %v - Output: %s", err, string(output))
+		return fmt.Errorf("failed to open file: %v", err)
+	}
+	defer file.Close()
+
+	// Get file info for size
+	fileInfo, err := file.Stat()
+	if err != nil {
+		return fmt.Errorf("failed to get file info: %v", err)
+	}
+
+	// Create AWS config with custom endpoint resolver for OVH
+	customResolver := aws.EndpointResolverWithOptionsFunc(func(service, region string, options ...interface{}) (aws.Endpoint, error) {
+		return aws.Endpoint{
+			URL:               cfg.Endpoint,
+			SigningRegion:     cfg.Region,
+			HostnameImmutable: true,
+		}, nil
+	})
+
+	awsConfig, err := config.LoadDefaultConfig(context.TODO(),
+		config.WithRegion(cfg.Region),
+		config.WithEndpointResolverWithOptions(customResolver),
+		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(
+			cfg.AccessKeyID,
+			cfg.SecretAccessKey,
+			"",
+		)),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to load AWS config: %v", err)
+	}
+
+	// Create S3 client
+	client := s3.NewFromConfig(awsConfig)
+
+	// Build S3 key (path in bucket) maintaining the year/day/month/hour structure
+	s3Key := buildS3Key(cfg.BucketPrefix, localPath, diskImageName+".encrypted")
+
+	// Upload file to S3
+	logInfo("Uploading %s (%d bytes) to s3://%s/%s", diskImageName, fileInfo.Size(), cfg.BucketName, s3Key)
+
+	_, err = client.PutObject(context.TODO(), &s3.PutObjectInput{
+		Bucket: aws.String(cfg.BucketName),
+		Key:    aws.String(s3Key),
+		Body:   file,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to upload to S3: %v", err)
 	}
 
 	return nil
 }
 
-func getRelativePathFromDiskImage(diskImagePath string) string {
+func buildS3Key(prefix, localPath, filename string) string {
+	// Get the relative path from disk_images directory
+	relativePath := getRelativePathFromDiskImage(localPath)
 
-	relativePath := strings.TrimPrefix(diskImagePath, diskImageDir+"/")
-
-	parts := strings.Split(relativePath, "/")
-	if len(parts) >= 4 {
-		return filepath.Join(parts[0], parts[1], parts[2], parts[3])
-	}
-
-	return "unknown"
-}
-
-func buildCloudPath(prefix, relativePath, filename string) string {
 	if prefix == "" {
 		return filepath.Join(relativePath, filename)
 	}
 	return filepath.Join(prefix, relativePath, filename)
+}
+
+func getRelativePathFromDiskImage(diskImagePath string) string {
+	// Extract the year/day/month/hour structure from the disk image path
+	relativePath := strings.TrimPrefix(diskImagePath, diskImageDir+"/")
+
+	parts := strings.Split(relativePath, "/")
+	if len(parts) >= 4 {
+		// Return year/day/month/hour path
+		return filepath.Join(parts[0], parts[1], parts[2], parts[3])
+	}
+
+	return "unknown"
 }

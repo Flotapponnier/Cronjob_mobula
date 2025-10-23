@@ -1,6 +1,6 @@
 # Mobula - Encrypted Snapshot System
 
-A secure, automated snapshot system that creates encrypted backups and optionally uploads them to Google Cloud Storage. The system uses Shamir's Secret Sharing for key management, ensuring that no single point of failure can compromise your encrypted data.
+A secure, automated snapshot system that creates encrypted backups and optionally uploads them to OVH S3 Object Storage. The system uses Shamir's Secret Sharing for key management, ensuring that no single point of failure can compromise your encrypted data.
 
 ## Quick Start
 
@@ -12,7 +12,7 @@ cp .env.example .env
 # Edit the configuration file
 nano .env
 ```
-Configure your settings (Google Cloud credentials, retention policy, etc.) before starting.
+Configure your settings (OVH S3 credentials, retention policy, etc.) before starting.
 
 ### 2. Build and Start
 ```bash
@@ -131,14 +131,31 @@ TEST_FILE=/app/test_hello.encrypted  # Test file for encryption validation
 DAY_RETENTION=7    # Remove snapshots older than N days (0 = keep forever)
 ```
 
-### Google Cloud Storage (Optional)
+### OVH S3 Object Storage (Optional)
 ```bash
-GCP_ENABLED=true                                    # Enable cloud uploads
-GCP_PROJECT_ID=your-project-id                     # GCP project
-GCP_BUCKET_NAME=your-bucket-name                   # Storage bucket
-GCP_SERVICE_ACCOUNT_KEY_FILE=service-account.json  # Auth credentials
-GCP_BUCKET_PREFIX=snapshots                        # Folder prefix in bucket
+S3_ENABLED=true                                           # Enable cloud uploads
+S3_ENDPOINT=https://s3.gra.io.cloud.ovh.net              # OVH S3 endpoint (change region if needed)
+S3_REGION=gra                                            # OVH region (gra, rbx, sbg, etc.)
+S3_ACCESS_KEY_ID=your-access-key-id                      # S3 access key
+S3_SECRET_ACCESS_KEY=your-secret-access-key              # S3 secret key
+S3_BUCKET_NAME=your-bucket-name                          # S3 bucket name
+S3_BUCKET_PREFIX=backups                                 # Folder prefix in bucket
 ```
+
+**How to get OVH S3 credentials:**
+1. Log in to your OVH Control Panel
+2. Go to "Public Cloud" > "Object Storage" > "S3 Users"
+3. Create a new S3 user or use an existing one
+4. Download the credentials (Access Key ID and Secret Access Key)
+5. Create an S3 bucket in your desired region (e.g., GRA for Gravelines, France)
+6. Use the appropriate endpoint for your region:
+   - GRA (Gravelines): `https://s3.gra.io.cloud.ovh.net`
+   - BHS (Beauharnois): `https://s3.bhs.io.cloud.ovh.net`
+   - SBG (Strasbourg): `https://s3.sbg.io.cloud.ovh.net`
+   - RBX (Roubaix): `https://s3.rbx.io.cloud.ovh.net`
+   - WAW (Warsaw): `https://s3.waw.io.cloud.ovh.net`
+   - DE (Frankfurt): `https://s3.de.io.cloud.ovh.net`
+   - UK (London): `https://s3.uk.io.cloud.ovh.net`
 
 ### Cross-Platform Compatibility Settings
 

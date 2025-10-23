@@ -33,16 +33,13 @@ FROM debian:bullseye
 ENV TZ=Europe/Paris
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
-# Update packages and install dependencies including Google Cloud SDK and disk imaging tools
+# Update packages and install dependencies for disk imaging tools
 RUN apt-get update && apt-get install -y \
     cron \
     rsync \
     util-linux \
     ca-certificates \
     tzdata \
-    curl \
-    python3 \
-    python3-pip \
     e2fsprogs \
     parted \
     genisoimage \
@@ -50,12 +47,6 @@ RUN apt-get update && apt-get install -y \
     syslinux-common \
     && rm -rf /var/lib/apt/lists/* \
     && update-ca-certificates
-
-# Install Google Cloud SDK manually
-RUN curl -sSL https://sdk.cloud.google.com > /tmp/gcpsdk-install.sh && \
-    bash /tmp/gcpsdk-install.sh --disable-prompts --install-dir=/opt && \
-    rm /tmp/gcpsdk-install.sh
-ENV PATH="/opt/google-cloud-sdk/bin:$PATH"
 
 # Create disk_images and keys directories
 RUN mkdir -p /app/disk_images /app/keys
@@ -71,7 +62,6 @@ COPY cmd/script/ /app/cmd/script/
 # Copy scripts and configuration
 COPY cronjob/cronjob.sh /app/cronjob.sh
 COPY .env /app/.env
-COPY mobulacronjson.json /app/keys/mobulacronjson.json
 
 # Make scripts executable
 RUN chmod +x /app/snapshot /app/generate_encryption /app/decrypt /app/cronjob.sh
