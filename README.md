@@ -10,7 +10,7 @@ A secure, automated snapshot system that creates encrypted backups and optionall
 cp .env.example .env
 
 # Edit the configuration file
-nano .env
+vim .env
 ```
 Configure your settings (OVH S3 credentials, retention policy, etc.) before starting.
 
